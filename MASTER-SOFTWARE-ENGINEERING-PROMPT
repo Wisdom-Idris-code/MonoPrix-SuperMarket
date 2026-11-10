@@ -1,0 +1,895 @@
+# MASTER SOFTWARE ENGINEERING PROMPT
+## Project: Monoprix Online — Premium E-commerce Supermarket Platform
+
+### YOUR ROLE
+
+Act as a senior full-stack software engineer, software architect, UI/UX designer and quality assurance engineer.
+
+Your responsibility is to design, architect, implement, test and deliver a complete, professional full-stack supermarket e-commerce application.
+
+Do not approach this as a simple website-generation task.
+
+Build a maintainable software product with real business workflows, reliable data handling, reusable components, clean architecture and a polished customer experience.
+
+You must think like an engineer building software that a real supermarket could eventually operate.
+
+---
+
+# 1. PROJECT OVERVIEW
+
+Project name: Monoprix Online
+
+Project type: Full-stack supermarket e-commerce platform.
+
+Market: Sierra Leone.
+
+Primary currency: SLE (Sierra Leonean Leone).
+
+Primary audience:
+- Supermarket customers.
+- Supermarket administrators.
+- Inventory and product management staff.
+- Order processing staff.
+- Delivery personnel.
+
+Core objective:
+
+Create a premium online supermarket where customers can browse products, search for groceries, add products to their shopping cart, check out, choose payment methods and arrange delivery.
+
+The supermarket's staff must have an administrative dashboard for managing products, inventory, orders, payments and deliveries.
+
+This is an independent concept demonstration. Do not claim that Monoprix has officially commissioned, approved or launched the application.
+
+All sample business information, products, prices and transactions must be clearly identifiable as demonstration data.
+
+---
+
+# 2. BRAND IDENTITY AND DESIGN DIRECTION
+
+Create a premium visual experience inspired by Monoprix's recognizable brand character.
+
+Design characteristics:
+- Premium urban supermarket.
+- Modern retail experience.
+- Bold but controlled brand expression.
+- Strong typography.
+- Beautiful product photography.
+- Clean white backgrounds.
+- Distinctive red brand accents.
+- Refined promotional sections.
+- Consistent spacing and alignment.
+- Excellent mobile shopping experience.
+
+Proposed concept palette:
+
+Primary red: #D71920
+Dark charcoal: #171717
+White: #FFFFFF
+Warm neutral: #F7F5F2
+Soft grey: #ECEAE7
+Warm yellow accent: #F2B544
+
+These are proposed implementation colours, not verified official brand colour values.
+
+Use the supplied official logo and brand assets if available.
+
+If no authentic logo is provided, create a restrained typographic wordmark reading MONOPRIX for demonstration purposes. Do not invent an official logo or copy proprietary brand artwork.
+
+Use CSS variables or a centralized design-token system for all colours, typography, spacing, borders and shadows.
+
+Typography:
+- Use a modern, professional sans-serif typeface.
+- Use strong editorial headings.
+- Maintain readable body typography.
+- Establish a consistent type scale.
+- Avoid excessive font weights and inconsistent text sizes.
+
+Visual requirements:
+
+DO NOT:
+- Use generic AI-generated dashboard templates.
+- Use excessive gradients.
+- Use random colourful cards.
+- Use glassmorphism everywhere.
+- Use oversized rounded containers everywhere.
+- Use excessive pill-shaped buttons.
+- Use emoji as product images or interface icons.
+- Create repetitive layouts with no visual hierarchy.
+- Add unnecessary animations.
+- Use placeholder content such as Lorem Ipsum.
+- Make every section look like a separate floating card.
+
+DO:
+- Create a recognizable visual identity.
+- Use high-quality food and grocery photography.
+- Establish clear content hierarchy.
+- Use consistent product-card dimensions.
+- Use subtle shadows and borders.
+- Design intentional whitespace.
+- Use realistic supermarket content.
+- Create a cohesive desktop and mobile experience.
+- Use Lucide icons consistently.
+- Make loading, empty, success and error states visually polished.
+
+The result should feel like a professionally designed retail product, not a generic AI-generated template.
+
+---
+
+# 3. TECHNOLOGY STACK
+
+Use the following architecture unless an existing repository contains a justified equivalent.
+
+Frontend:
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+- React Router
+- TanStack Query
+- React Hook Form
+- Zod
+- Lucide React
+- Zustand for appropriate client-side state
+
+Backend:
+- Node.js
+- Express
+- TypeScript
+- REST API
+- Prisma ORM
+- PostgreSQL
+- Zod request validation
+- Secure authentication and authorization
+
+Infrastructure:
+- Supabase PostgreSQL
+- Cloudinary image storage
+- Resend transactional email
+- Vercel frontend deployment
+- Render backend deployment
+
+Use npm workspaces in a monorepo.
+
+Suggested structure:
+
+monoprix-online/
+  apps/
+    web/
+    api/
+  packages/
+    shared/
+  docs/
+  package.json
+  README.md
+
+The frontend and backend must remain logically separated.
+
+Do not put business logic inside React components.
+
+Do not put all backend functionality inside a single Express file.
+
+Use feature-based modules and reusable service layers.
+
+---
+
+# 4. CUSTOMER APPLICATION
+
+Build the following customer-facing pages and workflows.
+
+## A. Homepage
+
+Include:
+
+- Professional navigation.
+- Monoprix wordmark.
+- Product search.
+- Account access.
+- Shopping cart indicator.
+- Promotional hero section.
+- Featured categories.
+- Popular products.
+- Weekly offers.
+- Recommended products.
+- Promotional banners.
+- Store/contact information.
+- Footer with useful links.
+
+The homepage must immediately communicate that customers can shop for groceries online.
+
+## B. Product catalogue
+
+Implement:
+
+- Product grid.
+- Product images.
+- Product names.
+- Prices in SLE.
+- Product availability.
+- Category navigation.
+- Search.
+- Sorting.
+- Price filtering.
+- Pagination or efficient incremental loading.
+- Product detail pages.
+
+Product cards should have functional add-to-cart actions.
+
+## C. Product details
+
+Include:
+
+- Product image gallery.
+- Product name.
+- Description.
+- Price.
+- Stock availability.
+- Quantity selection.
+- Add-to-cart button.
+- Related products.
+
+Prevent customers from purchasing quantities exceeding available stock.
+
+## D. Shopping cart
+
+Implement:
+
+- Add products.
+- Remove products.
+- Change quantities.
+- Display subtotal.
+- Display delivery fee.
+- Display total.
+- Empty-cart state.
+- Continue-shopping navigation.
+
+Synchronize the cart with the authenticated customer's backend cart.
+
+For guest users, implement an appropriate temporary cart that can be merged after login.
+
+## E. Authentication
+
+Implement:
+
+- Customer registration.
+- Customer login.
+- Logout.
+- Password hashing.
+- Secure session/token handling.
+- Protected customer routes.
+- Password validation.
+- User account management.
+
+Use secure HTTP-only cookies for authentication where appropriate. Do not store sensitive authentication tokens in localStorage.
+
+## F. Checkout
+
+Create a complete checkout experience.
+
+Collect:
+
+- Customer name.
+- Phone number.
+- Email where available.
+- Delivery address.
+- Area/neighbourhood.
+- Delivery instructions.
+- Payment method.
+
+Payment options should be configurable.
+
+Initial demonstration options:
+- Cash on delivery.
+- Simulated mobile money.
+- Simulated card payment.
+
+Never present simulated transactions as real payments.
+
+Calculate all prices and totals on the backend.
+
+Do not trust the price or total submitted by the browser.
+
+## G. Order tracking
+
+Customers should be able to:
+
+- View their orders.
+- Open order details.
+- View purchased products.
+- See payment status.
+- See delivery status.
+- View order history.
+
+Order statuses:
+
+PENDING
+CONFIRMED
+PROCESSING
+READY_FOR_DELIVERY
+OUT_FOR_DELIVERY
+DELIVERED
+CANCELLED
+
+Display statuses in a clear progress interface.
+
+---
+
+# 5. ADMINISTRATIVE DASHBOARD
+
+Build a separate protected administration interface.
+
+The dashboard must be designed for actual supermarket operations.
+
+## Dashboard overview
+
+Display:
+- Total orders.
+- Total sales.
+- Pending orders.
+- Completed orders.
+- Low-stock products.
+- Recent orders.
+- Sales overview.
+
+Do not invent live statistics. Use clearly labelled seed/demo data.
+
+## Product management
+
+Administrators must be able to:
+
+- Create products.
+- Edit products.
+- Delete or archive products.
+- Upload images.
+- Change product prices.
+- Assign categories.
+- Update stock.
+- Set product availability.
+- Search products.
+- Filter products.
+
+## Category management
+
+Administrators must be able to:
+
+- Create categories.
+- Edit categories.
+- Upload category images.
+- Activate or deactivate categories.
+
+## Order management
+
+Staff must be able to:
+
+- View all orders.
+- Search orders.
+- Filter by status.
+- View customer information.
+- View purchased products.
+- Confirm orders.
+- Process orders.
+- Update delivery status.
+- Cancel orders when appropriate.
+
+## Inventory management
+
+Implement:
+- Current stock levels.
+- Stock adjustments.
+- Low-stock warnings.
+- Stock movement records.
+- Prevention of negative inventory.
+
+Every stock adjustment must be auditable.
+
+## Staff and permissions
+
+Support role-based access control.
+
+Roles:
+- CUSTOMER
+- ADMIN
+- STAFF
+
+Only authorized users can access administrative functions.
+
+Do not rely on hiding frontend buttons as an authorization mechanism. Enforce all permissions in the backend.
+
+---
+
+# 6. DATABASE DESIGN
+
+Use PostgreSQL and Prisma.
+
+Create appropriate relational models for:
+
+- User
+- Address
+- Category
+- Product
+- Cart
+- CartItem
+- Order
+- OrderItem
+- Payment
+- InventoryMovement
+- Delivery
+- Notification
+- AuditLog
+
+Use appropriate:
+- Primary keys.
+- Foreign keys.
+- Unique constraints.
+- Database indexes.
+- Timestamps.
+- Referential integrity.
+- Decimal types for money.
+
+Important financial rule:
+
+Never use JavaScript floating-point arithmetic as the source of truth for financial calculations.
+
+Use Prisma Decimal or an appropriate decimal/money calculation library.
+
+Store order-item product names and unit prices as snapshots so historical orders do not change when a product is updated.
+
+Create database migrations and a realistic seed script.
+
+Seed products from supermarket categories such as:
+
+- Fresh produce.
+- Fruits.
+- Vegetables.
+- Meat and poultry.
+- Fish and seafood.
+- Dairy.
+- Beverages.
+- Snacks.
+- Bakery.
+- Household essentials.
+- Personal care.
+- Frozen foods.
+
+All sample prices must be clearly labelled as demonstration prices, not Monoprix's real prices.
+
+---
+
+# 7. EXTERNAL API INTEGRATIONS
+
+Build integrations using independent provider adapters.
+
+Do not tightly couple external services to business logic.
+
+## A. Supabase PostgreSQL
+
+Use Supabase as the managed PostgreSQL database.
+
+Use Prisma as the ORM.
+
+Use environment variables for connection strings.
+
+Do not expose database credentials to the browser.
+
+## B. Cloudinary
+
+Use Cloudinary for:
+
+- Product image uploads.
+- Category image uploads.
+- Image transformations.
+- Optimized delivery.
+
+All privileged uploads must be signed by the backend.
+
+Do not expose Cloudinary API secrets in frontend code.
+
+## C. Payment architecture
+
+Create a payment-provider abstraction.
+
+Suggested interface:
+
+PaymentProvider:
+- initiatePayment()
+- verifyPayment()
+- handleWebhook()
+- refundPayment() where supported
+
+Implement:
+
+1. MockPaymentProvider for the concept demonstration.
+2. OrangeMoneyProvider as a future real integration.
+3. A generic provider adapter for future approved payment gateways.
+
+Investigate:
+- Orange Money Sierra Leone developer documentation.
+- CrissCross mobile money documentation for Sierra Leone.
+- Afrimoney merchant integration availability.
+
+Do not invent API endpoints, credentials, request payloads or webhook signatures.
+
+Do not activate real payment processing without merchant approval, credentials and verified provider documentation.
+
+Payment security requirements:
+- Server-side amount validation.
+- Unique transaction references.
+- Idempotent payment operations.
+- Webhook signature verification.
+- Duplicate event protection.
+- Payment status reconciliation.
+- No storage of customer PINs.
+- No storage of raw card details.
+
+The mock provider must be clearly marked as a test implementation.
+
+## D. Resend
+
+Use Resend for transactional emails where configured.
+
+Email events:
+- Customer registration confirmation.
+- Order confirmation.
+- Order status changes.
+- Payment confirmation.
+- Delivery updates.
+
+If credentials are unavailable, implement the email service behind an adapter and log a safe development message instead.
+
+## E. Mapbox
+
+Optional integration.
+
+Investigate Mapbox for:
+- Address search.
+- Geocoding.
+- Delivery location selection.
+- Map-based delivery interfaces.
+
+Do not make Mapbox mandatory for basic checkout.
+
+Always allow customers to manually enter delivery addresses.
+
+## F. SMS
+
+Investigate the Orange Developer SMS API for future customer notifications.
+
+Do not assume SMS access or pricing without provider verification.
+
+Keep SMS notifications behind an independent service interface.
+
+---
+
+# 8. API ARCHITECTURE
+
+Use versioned REST endpoints.
+
+Base path:
+
+/api/v1
+
+Organize endpoints into modules:
+
+Authentication:
+- POST /auth/register
+- POST /auth/login
+- POST /auth/logout
+- GET /auth/me
+
+Products:
+- GET /products
+- GET /products/:id
+- GET /products/slug/:slug
+
+Categories:
+- GET /categories
+
+Cart:
+- GET /cart
+- POST /cart/items
+- PATCH /cart/items/:id
+- DELETE /cart/items/:id
+
+Orders:
+- POST /orders
+- GET /orders
+- GET /orders/:id
+
+Payments:
+- POST /payments/initiate
+- GET /payments/:id
+- POST /payments/webhooks/:provider
+
+Admin:
+- GET /admin/dashboard
+- POST /admin/products
+- PATCH /admin/products/:id
+- DELETE /admin/products/:id
+- GET /admin/orders
+- PATCH /admin/orders/:id/status
+- GET /admin/inventory
+- POST /admin/inventory/adjustments
+
+Add appropriate validation, authentication, authorization, error handling and response structures.
+
+---
+
+# 9. SECURITY REQUIREMENTS
+
+Implement:
+
+- Password hashing using Argon2id or an appropriately configured bcrypt implementation.
+- Secure authentication.
+- Role-based authorization.
+- Request validation.
+- Rate limiting.
+- Helmet security headers.
+- CORS configuration.
+- Secure cookie settings.
+- SQL injection protection through safe ORM queries.
+- Input sanitization where appropriate.
+- Safe error messages.
+- Environment variable validation.
+- Audit logging for sensitive administrative actions.
+- Protection against duplicate order submissions.
+- Server-side inventory validation.
+- Transactional order creation.
+
+Never commit API secrets.
+
+Create .env.example with placeholder values only.
+
+---
+
+# 10. PERFORMANCE AND RESPONSIVENESS
+
+The application must work well on:
+
+- Desktop.
+- Laptop.
+- Tablet.
+- Mobile phones.
+
+Prioritize mobile shopping.
+
+Implement:
+- Responsive layouts.
+- Lazy-loaded images.
+- Optimized image formats.
+- Proper image dimensions.
+- Efficient API queries.
+- Pagination.
+- Appropriate caching.
+- Skeleton loading states.
+- Empty states.
+- Error states.
+
+Avoid unnecessary dependencies.
+
+Do not over-engineer.
+
+---
+
+# 11. TESTING
+
+Write tests for important workflows.
+
+Backend:
+- Authentication.
+- Authorization.
+- Product retrieval.
+- Cart calculations.
+- Order creation.
+- Stock validation.
+- Payment state transitions.
+- Duplicate payment webhook handling.
+
+Frontend:
+- Product browsing.
+- Cart interactions.
+- Checkout validation.
+- Login and registration.
+- Admin access restrictions.
+
+End-to-end:
+- Customer registers.
+- Customer logs in.
+- Customer browses products.
+- Customer adds products to cart.
+- Customer checks out.
+- Customer completes a simulated payment.
+- Order appears in admin dashboard.
+- Staff updates order status.
+- Customer sees updated order status.
+
+A feature is not complete simply because its screen looks correct. Verify that its underlying workflow works.
+
+---
+
+# 12. CODE QUALITY AND ENGINEERING STANDARDS
+
+Follow these rules:
+
+- TypeScript strict mode.
+- No unnecessary `any`.
+- No enormous components.
+- No duplicated business logic.
+- No giant Express controller files.
+- No placeholder API responses presented as real functionality.
+- No fake payment confirmations.
+- No hardcoded production credentials.
+- No unhandled promises.
+- No swallowed errors.
+- No misleading success notifications.
+- No unused dependencies.
+- No broken navigation.
+- No dead buttons.
+
+Use clean naming conventions.
+
+Separate:
+- Routes.
+- Controllers.
+- Services.
+- Validation schemas.
+- Database access.
+- Shared types.
+- UI components.
+
+Add meaningful comments only where they clarify non-obvious logic.
+
+---
+
+# 13. DELIVERABLES
+
+The final repository must contain:
+
+1. Complete frontend application.
+2. Complete backend application.
+3. Database schema.
+4. Database migrations.
+5. Seed data.
+6. API documentation.
+7. Environment example file.
+8. README with installation instructions.
+9. Deployment instructions.
+10. Test suite.
+11. Clear demonstration account setup.
+12. Documentation explaining simulated and real integrations.
+
+Create the following documentation:
+
+docs/
+  architecture.md
+  database-design.md
+  api-documentation.md
+  payment-integrations.md
+  deployment-guide.md
+  testing-guide.md
+  project-roadmap.md
+
+Also create:
+
+docs/agent-prompts/
+  01-project-architecture.md
+  02-brand-and-ui-design.md
+  03-database-and-backend.md
+  04-customer-shopping-experience.md
+  05-admin-dashboard.md
+  06-payments-and-delivery.md
+  07-security-and-testing.md
+  08-deployment-and-handover.md
+
+These files should contain focused, reusable implementation prompts for the relevant development phases. Keep them consistent with this master brief.
+
+---
+
+# 14. EXECUTION STRATEGY
+
+Do not attempt to generate the entire application in one uncontrolled code dump.
+
+Work in structured phases.
+
+PHASE 1 — Repository inspection and architecture.
+- Inspect existing files.
+- Identify existing technologies and setup.
+- Produce the architecture plan.
+- Identify missing dependencies.
+- Create the implementation roadmap.
+- Create the documentation and focused agent prompts.
+
+PHASE 2 — Project foundation.
+- Set up the monorepo.
+- Configure TypeScript.
+- Configure the frontend.
+- Configure Express.
+- Configure Prisma.
+- Connect PostgreSQL.
+- Create the first migration.
+
+PHASE 3 — Design system and storefront.
+- Implement the design tokens.
+- Build navigation.
+- Build homepage.
+- Build product catalogue.
+- Build product details.
+- Implement responsive layouts.
+
+PHASE 4 — Backend business logic.
+- Authentication.
+- Products.
+- Categories.
+- Cart.
+- Inventory.
+- Orders.
+
+PHASE 5 — Customer workflows.
+- Registration and login.
+- Cart persistence.
+- Checkout.
+- Simulated payments.
+- Order history and tracking.
+
+PHASE 6 — Admin application.
+- Dashboard.
+- Product management.
+- Inventory management.
+- Order management.
+- Staff permissions.
+
+PHASE 7 — Integrations.
+- Cloudinary.
+- Resend.
+- Payment adapter.
+- Delivery functionality.
+- Optional mapping.
+
+PHASE 8 — Testing and delivery.
+- Run migrations.
+- Seed the database.
+- Run tests.
+- Fix errors.
+- Validate workflows.
+- Build frontend and backend.
+- Prepare deployment.
+- Update documentation.
+
+At the end of each phase:
+1. Summarize what was implemented.
+2. List files created or modified.
+3. Report tests and build results.
+4. Identify incomplete work.
+5. State the next implementation milestone.
+
+Do not claim completion if tests or builds fail.
+
+Do not overwrite existing user work without checking first.
+
+If credentials or external services are unavailable, implement the correct abstraction and document what is needed. Do not fabricate successful integrations.
+
+---
+
+# 15. FINAL QUALITY STANDARD
+
+The finished application should demonstrate the ability to build a real business system.
+
+It must have:
+
+- A visually distinctive supermarket experience.
+- Reliable backend architecture.
+- Proper relational database design.
+- Functional customer shopping workflows.
+- Functional administrative operations.
+- Secure authentication and authorization.
+- Accurate financial calculations.
+- Reliable order processing.
+- A realistic payment integration architecture.
+- Maintainable code.
+- Responsive interfaces.
+- Meaningful documentation.
+- Verified functionality.
+
+The final product must be suitable for a professional concept demonstration to a supermarket decision-maker.
+
+Begin by inspecting the repository and producing the implementation plan. Then proceed through the phases in order, verifying each milestone before moving forward.
+
+Prioritize working software, design quality, correctness and maintainability over generating large quantities of code quickly.
