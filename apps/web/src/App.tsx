@@ -11,7 +11,7 @@ import { OrdersPage } from './pages/OrdersPage';
 import { ScrollToTop } from './components/ScrollToTop';
 import { apiGet } from './lib/api';
 import { useAuthStore, type AuthUser } from './lib/store';
-import { replaceFromServerCart } from './lib/cartSync';
+import { replaceFromServerCart, type ServerCart } from './lib/cartSync';
 
 export default function App() {
   const setUser = useAuthStore((state) => state.setUser);
@@ -23,10 +23,7 @@ export default function App() {
       .then(async ({ user }) => {
         if (!active || !user) return;
         setUser(user);
-        const { cart } = await apiGet<{ cart: { items: Array<{
-          id: string; productId: string; name: string; slug: string; price: string; quantity: number;
-          stock: number; imageUrl: string; altText: string;
-        }> } }>('/cart');
+        const { cart } = await apiGet<{ cart: ServerCart }>('/cart');
         if (active) await replaceFromServerCart(cart);
       })
       .catch((error: unknown) => {

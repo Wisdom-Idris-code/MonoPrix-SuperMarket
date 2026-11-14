@@ -16,7 +16,7 @@ const checkoutSchema = z.object({
   addressLine: z.string().trim().min(5).max(300),
   area: z.string().trim().min(2).max(100),
   instructions: z.string().trim().max(500).optional(),
-  paymentMethod: z.enum(['CASH_ON_DELIVERY', 'MONIME', 'MOCK_MOBILE_MONEY', 'MOCK_CARD']),
+  paymentMethod: z.enum(['CASH_ON_DELIVERY', 'ORANGE_MONEY', 'VISA', 'MASTERCARD', 'MONIME']),
 });
 
 router.post('/', asyncHandler(async (req, res) => {

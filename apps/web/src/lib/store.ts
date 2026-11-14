@@ -75,5 +75,5 @@ export const useAuthStore = create<AuthState>((set) => ({
 }));
 
 export function formatSLE(amount: number | string) {
-  return `SLE ${Number(amount).toLocaleString('en-SL', { minimumFractionDigits: 0, maximumFractionDigits: 2 })}`;
+  return `NLe ${Number(amount).toLocaleString('en-SL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

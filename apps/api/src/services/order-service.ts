@@ -1,10 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { config } from '../lib/config.js';
+import { DEFAULT_DELIVERY_FEE } from '../lib/currency.js';
 import { prisma } from '../lib/db.js';
 import { HttpError } from '../lib/errors.js';
 import { emailProvider } from './notifications.js';
 
-const DELIVERY_FEE = new Prisma.Decimal(20000);
+const DELIVERY_FEE = new Prisma.Decimal(DEFAULT_DELIVERY_FEE);
 export type CreateOrderInput = {
   customerName: string;
   phone: string;
@@ -12,14 +13,11 @@ export type CreateOrderInput = {
   addressLine: string;
   area: string;
   instructions?: string;
-  paymentMethod: 'CASH_ON_DELIVERY' | 'MONIME' | 'MOCK_MOBILE_MONEY' | 'MOCK_CARD';
+  paymentMethod: 'CASH_ON_DELIVERY' | 'ORANGE_MONEY' | 'VISA' | 'MASTERCARD' | 'MONIME';
   idempotencyKey: string;
 };
 
 export async function createOrder(userId: string, input: CreateOrderInput) {
-  if (input.paymentMethod.startsWith('MOCK_') && (!config.ENABLE_MOCK_PAYMENTS || config.NODE_ENV === 'production')) {
-    throw new HttpError(503, 'Mock payments are disabled outside isolated development and test environments.', 'MOCK_PAYMENTS_DISABLED');
-  }
   const existing = await prisma.order.findFirst({
     where: { userId, idempotencyKey: input.idempotencyKey },
     include: { items: true, payment: true, delivery: true },
@@ -100,9 +98,7 @@ export async function createOrder(userId: string, input: CreateOrderInput) {
       });
     }
 
-    const provider = input.paymentMethod === 'CASH_ON_DELIVERY'
-      ? 'cash-on-delivery'
-      : input.paymentMethod === 'MONIME' ? 'monime' : 'mock';
+    const provider = input.paymentMethod === 'CASH_ON_DELIVERY' ? 'cash-on-delivery' : 'monime';
     const created = await transaction.order.create({
       data: {
         userId,
@@ -150,7 +146,7 @@ export async function createOrder(userId: string, input: CreateOrderInput) {
         userId,
         action: 'ORDER_CREATED',
         entity: 'Order',
-        details: `Order ${created.id} created for ${created.total.toString()} SLE`,
+        details: `Order ${created.id} created for NLe ${created.total.toString()}.`,
       },
     });
     await transaction.notification.create({
@@ -170,7 +166,7 @@ export async function createOrder(userId: string, input: CreateOrderInput) {
       await emailProvider.send({
         to: input.email,
         subject: `Order ${order.id} received`,
-        text: `Your demonstration order ${order.id} is received. Total: SLE ${order.total.toString()}.`,
+        text: `Your order ${order.id} is received. Total: NLe ${order.total.toString()}.`,
       });
     } catch (error) {
       console.error(`Order confirmation email failed for order ${order.id}:`, error);
@@ -209,7 +205,8 @@ export async function updateOrderStatus(orderId: string, status: string, actorId
     if (status === 'CANCELLED' && current.paymentStatus === 'PAID') {
       throw new HttpError(409, 'An order with a completed payment cannot be cancelled automatically.', 'REFUND_REQUIRED');
     }
-    if (status === 'CANCELLED' && current.paymentMethod === 'MONIME' && current.paymentStatus === 'PENDING') {
+    const isMonimeOrder = ['MONIME', 'ORANGE_MONEY', 'VISA', 'MASTERCARD'].includes(current.paymentMethod);
+    if (status === 'CANCELLED' && isMonimeOrder && current.paymentStatus === 'PENDING') {
       throw new HttpError(409, 'Wait for the hosted checkout to be cancelled or expire before cancelling this order.', 'PAYMENT_SESSION_PENDING');
     }
 

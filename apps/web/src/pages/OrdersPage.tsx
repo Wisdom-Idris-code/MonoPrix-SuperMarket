@@ -55,12 +55,33 @@ export function OrdersPage() {
       return () => { active = false; };
     }
     const url = isStaff ? '/admin/orders' : '/orders';
-    apiGet<{ orders: Order[] }>(url)
-      .then(({ orders: result }) => { if (active) setOrders(result); })
-      .catch((issue: unknown) => { if (active) setError(issue instanceof Error ? issue.message : 'Order history is unavailable.'); })
-      .finally(() => { if (active) setLoading(false); });
+    const fetchOrders = () => (
+      apiGet<{ orders: Order[] }>(url)
+        .then(({ orders: result }) => { if (active) setOrders(result); })
+        .catch((issue: unknown) => { if (active) setError(issue instanceof Error ? issue.message : 'Order history is unavailable.'); })
+        .finally(() => { if (active) setLoading(false); })
+    );
+
+    fetchOrders();
+
+    if (paymentReturn === 'returned') {
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts += 1;
+        if (attempts >= 6 || !active) {
+          clearInterval(interval);
+          return;
+        }
+        fetchOrders();
+      }, 2500);
+      return () => {
+        active = false;
+        clearInterval(interval);
+      };
+    }
+
     return () => { active = false; };
-  }, [initialized, isStaff, user]);
+  }, [initialized, isStaff, user, paymentReturn]);
 
   return (
     <Layout>

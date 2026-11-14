@@ -9,7 +9,7 @@ import authRouter from './routes/auth.js';
 import catalogRouter from './routes/catalog.js';
 import cartRouter from './routes/cart.js';
 import ordersRouter from './routes/orders.js';
-import paymentsRouter from './routes/payments.js';
+import paymentsRouter, { monimeWebhookHandler } from './routes/payments.js';
 import adminRouter from './routes/admin.js';
 import assetsRouter from './routes/assets.js';
 
@@ -17,11 +17,53 @@ const app = express();
 
 app.disable('x-powered-by');
 app.use(helmet());
+const clientUrlParsed = new URL(config.CLIENT_URL);
+const allowedOrigins = new Set<string>([
+  clientUrlParsed.origin,
+  ...(config.NODE_ENV !== 'production'
+    ? [
+        `http://localhost:${clientUrlParsed.port || '5173'}`,
+        `http://127.0.0.1:${clientUrlParsed.port || '5173'}`,
+      ]
+    : []),
+]);
+
 app.use(cors({
-  origin: config.CLIENT_URL,
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.has(origin)) {
+      callback(null, true);
+    } else {
+      callback(null, false);
+    }
+  },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
 }));
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 300,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+const stateChangeOriginGuard = (req: express.Request, _res: express.Response, next: express.NextFunction) => {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const origin = req.header('origin');
+  if (origin && !allowedOrigins.has(origin)) {
+    return next(new HttpError(403, 'Request origin is not allowed.', 'INVALID_ORIGIN'));
+  }
+  if (req.header('sec-fetch-site') === 'cross-site') {
+    return next(new HttpError(403, 'Cross-site state changes are not allowed.', 'CROSS_SITE_REQUEST'));
+  }
+  next();
+};
+
+app.post(
+  ['/webhooks/monime', '/api/v1/payments/webhooks/monime'],
+  apiLimiter,
+  express.raw({ type: 'application/json', limit: '1mb' }),
+  monimeWebhookHandler,
+);
+
 app.use(express.json({
   limit: '1mb',
   verify: (req, _res, buffer) => {
@@ -29,24 +71,8 @@ app.use(express.json({
   },
 }));
 app.use(cookieParser());
-app.use((req, _res, next) => {
-  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const origin = req.header('origin');
-  if (origin && origin !== new URL(config.CLIENT_URL).origin) {
-    return next(new HttpError(403, 'Request origin is not allowed.', 'INVALID_ORIGIN'));
-  }
-  if (req.header('sec-fetch-site') === 'cross-site') {
-    return next(new HttpError(403, 'Cross-site state changes are not allowed.', 'CROSS_SITE_REQUEST'));
-  }
-  next();
-});
+app.use(stateChangeOriginGuard);
 
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  limit: 300,
-  standardHeaders: 'draft-7',
-  legacyHeaders: false,
-});
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 15,

@@ -1,7 +1,7 @@
 import { apiPost } from './api';
 import { useAuthStore, useCartStore, type CartItem } from './store';
 
-type ServerCart = {
+export type ServerCart = {
   items: Array<{
     id: string;
     productId: string;

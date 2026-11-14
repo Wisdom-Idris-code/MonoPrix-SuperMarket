@@ -18,5 +18,5 @@ export function slugify(value: string) {
 }
 
 export function asSLE(value: number) {
-  return `SLE ${value.toLocaleString('en-SL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `NLe ${value.toLocaleString('en-SL', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }

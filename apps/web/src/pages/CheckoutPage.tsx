@@ -14,7 +14,7 @@ const checkoutSchema = z.object({
   addressLine: z.string().trim().min(5, 'Enter a full delivery address.').max(300),
   area: z.string().trim().min(2, 'Enter a neighbourhood or area.').max(100),
   instructions: z.string().trim().max(500).optional(),
-  paymentMethod: z.enum(['CASH_ON_DELIVERY', 'MONIME', 'MOCK_MOBILE_MONEY', 'MOCK_CARD']),
+  paymentMethod: z.enum(['CASH_ON_DELIVERY', 'ORANGE_MONEY', 'VISA', 'MASTERCARD']),
 });
 type CheckoutFields = z.infer<typeof checkoutSchema>;
 
@@ -33,7 +33,6 @@ export function CheckoutPage() {
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [order, setOrder] = useState<CreatedOrder | null>(null);
-  const [paymentComplete, setPaymentComplete] = useState(false);
   const idempotencyKey = useRef<string>('');
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CheckoutFields>({
     resolver: zodResolver(checkoutSchema),
@@ -49,7 +48,7 @@ export function CheckoutPage() {
   });
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = items.length ? 20000 : 0;
+  const deliveryFee = items.length ? 50 : 0;
 
   async function placeOrder(fields: CheckoutFields) {
     setError('');
@@ -72,36 +71,25 @@ export function CheckoutPage() {
       setOrder(created);
       clearCart();
       if (fields.paymentMethod === 'CASH_ON_DELIVERY') {
-        setNotice('Order placed. Cash is due on delivery; no online payment was taken.');
+        setNotice('Order placed successfully. Cash is due on delivery.');
         return;
       }
+      setNotice('Preparing secure payment session…');
       const { payment } = await apiPost<{
         payment: { id: string; status: string; provider: string; reference?: string; redirectUrl?: string };
       }>('/payments/initiate', { orderId: created.id });
       setOrder({ ...created, payment: { ...created.payment!, ...payment } });
-      if (payment.provider === 'monime' && payment.redirectUrl) {
+      if (payment.redirectUrl) {
         window.location.assign(payment.redirectUrl);
         return;
       }
-      setNotice('Order created. The next step is an explicitly simulated test payment.');
+      setError('Payment gateway redirect URL was not returned. Please check your orders page.');
     } catch (issue) {
       if (issue instanceof ApiError && issue.status === 409) {
         setError(issue.message);
       } else {
         setError(issue instanceof Error ? issue.message : 'Order could not be placed.');
       }
-    }
-  }
-
-  async function simulatePayment() {
-    if (!order?.payment?.id) return;
-    setError('');
-    try {
-      await apiPost(`/payments/${order.payment.id}/mock-complete`);
-      setPaymentComplete(true);
-      setNotice('Demo payment simulated successfully. No real money was charged.');
-    } catch (issue) {
-      setError(issue instanceof Error ? issue.message : 'Demo payment could not be completed.');
     }
   }
 
@@ -115,18 +103,11 @@ export function CheckoutPage() {
         {order ? (
           <section className="order-confirmation">
             <p className="eyebrow">Order received</p>
-            <h2>Thank you. Your order is in.</h2>
+            <h2>Thank you. Your order is placed.</h2>
             <p>Order reference <strong>{order.id}</strong></p>
             <p>Total <strong>{formatSLE(order.total)}</strong> · Status <strong>{order.status}</strong></p>
-            {order.payment?.provider === 'mock' && !paymentComplete && (
-              <div className="mock-payment-box">
-                <strong>Test payment only</strong>
-                <p>This action changes the demonstration payment state only. It does not charge a card or mobile money account.</p>
-                <button className="primary-btn" onClick={simulatePayment}>Simulate test payment</button>
-              </div>
-            )}
-            {paymentComplete && <p className="payment-tag">Demo payment status: paid · no real charge</p>}
-            <Link to="/orders" className="secondary-btn">View my orders</Link>
+            <p className="payment-tag">Payment status: <strong>{order.paymentStatus.toLowerCase()}</strong></p>
+            <Link to="/orders" className="primary-btn">View my orders</Link>
           </section>
         ) : (
           <div className="checkout-layout">
@@ -151,14 +132,12 @@ export function CheckoutPage() {
                   <span>Choose how you would pay</span>
                   <select {...register('paymentMethod')}>
                     <option value="CASH_ON_DELIVERY">Cash on delivery</option>
-                    <option value="MONIME">Orange Money, Visa or Mastercard · Monime hosted checkout</option>
-                    {import.meta.env.DEV && <>
-                      <option value="MOCK_MOBILE_MONEY">Simulated mobile money · dev only</option>
-                      <option value="MOCK_CARD">Simulated card · dev only</option>
-                    </>}
+                    <option value="ORANGE_MONEY">Orange Money — Monime</option>
+                    <option value="VISA">Visa — Monime</option>
+                    <option value="MASTERCARD">Mastercard — Monime</option>
                   </select>
                 </label>
-                <p className="demo-payment-note">Monime checkout is hosted securely by Monime. Never share your PIN or card details with Monoprix.</p>
+                <p className="demo-payment-note">Electronic payments are handled by Monime’s secure hosted checkout. Monoprix never stores your card or mobile money details.</p>
               </section>
               <button className="primary-btn full-width-button" disabled={isSubmitting || !items.length}>
                 {isSubmitting ? 'Preparing secure checkout…' : 'Place order'}

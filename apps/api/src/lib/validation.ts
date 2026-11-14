@@ -5,7 +5,7 @@ import { HttpError } from './errors.js';
 export function parseBody<T extends z.ZodType>(schema: T, req: Request): z.infer<T> {
   const parsed = schema.safeParse(req.body);
   if (!parsed.success) {
-    throw new HttpError(400, 'Request validation failed.', 'VALIDATION_ERROR');
+    throw parsed.error;
   }
   return parsed.data;
 }
@@ -13,7 +13,7 @@ export function parseBody<T extends z.ZodType>(schema: T, req: Request): z.infer
 export function parseQuery<T extends z.ZodType>(schema: T, req: Request): z.infer<T> {
   const parsed = schema.safeParse(req.query);
   if (!parsed.success) {
-    throw new HttpError(400, 'Invalid query parameters.', 'VALIDATION_ERROR');
+    throw parsed.error;
   }
   return parsed.data;
 }

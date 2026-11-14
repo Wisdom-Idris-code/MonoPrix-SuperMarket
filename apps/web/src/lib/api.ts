@@ -1,7 +1,11 @@
+export type FieldError = { path: string; message: string };
+
 export class ApiError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly code?: string,
+    public readonly details?: FieldError[],
   ) {
     super(message);
     this.name = 'ApiError';
@@ -20,10 +24,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   });
   const result: unknown = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const message = result && typeof result === 'object' && 'error' in result && typeof result.error === 'string'
-      ? result.error
+    const errorObj = result && typeof result === 'object' ? (result as Record<string, unknown>) : {};
+    const message = typeof errorObj.error === 'string'
+      ? errorObj.error
       : `Request failed (${response.status}).`;
-    throw new ApiError(message, response.status);
+    const code = typeof errorObj.code === 'string' ? errorObj.code : undefined;
+    const details = Array.isArray(errorObj.details)
+      ? (errorObj.details as FieldError[])
+      : undefined;
+    throw new ApiError(message, response.status, code, details);
   }
   if (result && typeof result === 'object' && 'data' in result) {
     return result.data as T;

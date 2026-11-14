@@ -22,10 +22,15 @@ const checkoutSessionSchema = z.object({
 function getCredentials() {
   const accessToken = config.MONIME_ACCESS_TOKEN ?? config.MONIME_ACCESS_KEY;
   if (!accessToken || !config.MONIME_SPACE_ID) {
-    throw new HttpError(503, 'Monime test credentials are not configured.', 'MONIME_NOT_CONFIGURED');
+    throw new HttpError(503, 'Monime credentials are not configured.', 'MONIME_NOT_CONFIGURED');
   }
-  if (!accessToken.startsWith('mon_test_')) {
-    throw new HttpError(503, 'Monime requests are restricted to test-mode tokens.', 'MONIME_TEST_TOKEN_REQUIRED');
+  const isTestToken = accessToken.startsWith('mon_test_');
+  const isLiveToken = accessToken.startsWith('mon_') && !isTestToken;
+  if (!isTestToken && !isLiveToken) {
+    throw new HttpError(503, 'Monime access token must use the mon_test_ or mon_ prefix.', 'MONIME_INVALID_TOKEN');
+  }
+  if (config.NODE_ENV === 'production' && !isLiveToken) {
+    throw new HttpError(503, 'Production checkout requires a live Monime token and merchant approval.', 'MONIME_LIVE_TOKEN_REQUIRED');
   }
   if (config.NODE_ENV === 'production' && !config.API_PUBLIC_URL) {
     throw new HttpError(503, 'Set API_PUBLIC_URL to the public API origin before enabling hosted checkout.', 'MONIME_RETURN_URL_NOT_CONFIGURED');

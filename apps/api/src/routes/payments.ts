@@ -35,17 +35,23 @@ const redirectMonimeSuccess = asyncHandler(async (req, res) => {
 router.post('/monime/success', redirectMonimeSuccess);
 router.get('/monime/success', redirectMonimeSuccess);
 
-router.post('/webhooks/monime', asyncHandler(async (req, res) => {
+export const monimeWebhookHandler = asyncHandler(async (req, res) => {
   if (!config.MONIME_WEBHOOK_SECRET) {
     throw new HttpError(503, 'Monime webhook secret is not configured.', 'WEBHOOK_NOT_CONFIGURED');
   }
-  const rawBody = req.rawBody;
+  const rawBody = Buffer.isBuffer(req.body) ? req.body : undefined;
   const signature = req.header('monime-signature') ?? '';
   if (!rawBody || !verifyMonimeWebhookSignature(rawBody, signature, config.MONIME_WEBHOOK_SECRET)) {
     throw new HttpError(401, 'Invalid Monime webhook signature.', 'INVALID_WEBHOOK_SIGNATURE');
   }
 
-  const event = monimeEventSchema.parse(req.body);
+  let body: unknown;
+  try {
+    body = JSON.parse(rawBody.toString('utf8'));
+  } catch {
+    throw new HttpError(400, 'Invalid JSON request body.', 'INVALID_JSON');
+  }
+  const event = monimeEventSchema.parse(body);
   if (event.data.id !== event.object.id) {
     throw new HttpError(400, 'Monime event resource identifiers do not match.', 'INVALID_WEBHOOK_EVENT');
   }
@@ -111,7 +117,10 @@ router.post('/webhooks/monime', asyncHandler(async (req, res) => {
         if (updated.count) {
           await transaction.order.update({
             where: { id: payment.orderId },
-            data: { paymentStatus: 'PAID' },
+            data: {
+              paymentStatus: 'PAID',
+              ...(payment.order.status === 'PENDING' ? { status: 'CONFIRMED' } : {}),
+            },
           });
           await transaction.notification.create({
             data: {
@@ -148,7 +157,7 @@ router.post('/webhooks/monime', asyncHandler(async (req, res) => {
     else throw error;
   }
   res.json({ data: { accepted: true, duplicate } });
-}));
+});
 
 router.post('/webhooks/mock', asyncHandler(async (req, res) => {
   if (!config.ENABLE_MOCK_PAYMENTS || config.NODE_ENV === 'production') {

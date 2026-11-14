@@ -31,7 +31,7 @@ export function CartPage() {
   const user = useAuthStore((state) => state.user);
   const [notice, setNotice] = useState('');
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = subtotal > 0 ? 20000 : 0;
+  const deliveryFee = subtotal > 0 ? 50 : 0;
   const total = subtotal + deliveryFee;
 
   async function changeQuantity(itemId: string, value: number) {

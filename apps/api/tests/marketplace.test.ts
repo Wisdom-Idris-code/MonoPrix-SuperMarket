@@ -4,6 +4,7 @@ import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import bcrypt from 'bcryptjs';
 import { createHmac } from 'node:crypto';
+import { Prisma } from '@prisma/client';
 
 process.env.DATABASE_URL = 'postgresql://test:test@127.0.0.1:5432/monoprix_test?sslmode=require';
 process.env.DIRECT_URL = process.env.DATABASE_URL;
@@ -24,6 +25,7 @@ const [{ default: app }, { prisma }, { signToken, hasPermission, permissions }, 
   import('../src/lib/auth.js'),
   import('../src/services/order-service.js'),
 ]);
+const { DEFAULT_DELIVERY_FEE, formatSLE } = await import('../src/lib/currency.js');
 const { validateImageSignature } = await import('../src/lib/image-upload.js');
 const { sleToMinorUnits, verifyMonimeWebhookSignature } = await import('../src/services/monime.js');
 const { assertSafeDemoSeedTarget } = await import('../src/lib/demo-seed-safety.js');
@@ -40,6 +42,7 @@ const testUser = {
 const restorers: Array<() => void> = [];
 const httpFetch = globalThis.fetch.bind(globalThis);
 let server: Server;
+let originUrl: string;
 let baseUrl: string;
 
 function stub(target: object, method: string, implementation: (...args: unknown[]) => unknown) {
@@ -70,7 +73,8 @@ before(async () => {
   server = app.listen(0, '127.0.0.1');
   await new Promise<void>((resolve) => server.once('listening', resolve));
   const address = server.address() as AddressInfo;
-  baseUrl = `http://127.0.0.1:${address.port}/api/v1`;
+  originUrl = `http://127.0.0.1:${address.port}`;
+  baseUrl = `${originUrl}/api/v1`;
 });
 
 after(async () => {
@@ -223,6 +227,7 @@ test('an ADMIN account can access the Operations dashboard API', async () => {
   stub(prisma.order, 'count', async () => 0);
   stub(prisma.order, 'aggregate', async () => ({ _sum: { total: null } }));
   stub(prisma.product, 'findMany', async () => []);
+  stub(prisma.productVariant, 'findMany', async () => []);
   stub(prisma.order, 'findMany', async () => []);
 
   const response = await fetch(`${baseUrl}/admin/dashboard`, {
@@ -238,6 +243,12 @@ test('Monime SLE amounts convert exactly to minor units and reject excess precis
   assert.equal(sleToMinorUnits('20251.00'), 2025100);
   assert.equal(sleToMinorUnits('0.05'), 5);
   assert.throws(() => sleToMinorUnits('10.005'), /two decimal places/);
+});
+
+test('Sierra Leone monetary values follow the NLe standard and default delivery fee', () => {
+  assert.equal(DEFAULT_DELIVERY_FEE, '50.00');
+  assert.equal(formatSLE('50.00'), 'NLe 50.00');
+  assert.equal(formatSLE(250), 'NLe 250.00');
 });
 
 test('Monime webhook signatures require raw-body HMAC and a fresh timestamp', () => {
@@ -350,8 +361,21 @@ test('cart writes require authentication and enforce current stock', async () =>
   };
   let cartItems: Array<Record<string, unknown>> = [];
   let writes = 0;
+  const variant = {
+    id: 'variant-test-1',
+    productId: product.id,
+    name: '1 kg',
+    quantity: '1',
+    unit: 'kg',
+    sku: 'RICE-001-1KG',
+    price: '125.50',
+    stock: 2,
+    isActive: true,
+    isDefault: true,
+  };
   stub(prisma.user, 'findUnique', async () => ({ ...testUser, isActive: true }));
   stub(prisma.product, 'findFirst', async () => product);
+  stub(prisma.productVariant, 'findFirst', async () => variant);
   stub(prisma.cart, 'upsert', async () => ({
     id: 'cart-test-1',
     userId: testUser.id,
@@ -363,8 +387,10 @@ test('cart writes require authentication and enforce current stock', async () =>
     cartItems = [{
       id: 'cart-item-test-1',
       productId: data.productId,
+      variantId: variant.id,
       quantity: data.quantity,
       product,
+      variant,
     }];
     return { id: 'cart-item-test-1' };
   });
@@ -450,6 +476,18 @@ test('staff can create and edit products but cannot archive; administrators can 
     price: '12.34',
     stock: 5,
     isActive: true,
+    variants: [{
+      id: 'variant-test-1',
+      productId: 'product-test-1',
+      sku: 'RICE-001',
+      name: 'Standard',
+      quantity: '1',
+      unit: 'item',
+      price: '12.34',
+      stock: 5,
+      isActive: true,
+      isDefault: true,
+    }],
   };
   let createdData: Record<string, unknown> | undefined;
   let updatedData: Record<string, unknown> | undefined;
@@ -463,7 +501,9 @@ test('staff can create and edit products but cannot archive; administrators can 
   stub(prisma.product, 'create', async (argument) => {
     createdData = (argument as { data: Record<string, unknown> }).data;
     createdProducts.push(createdData);
-    return { ...product, ...createdData, brand: createdData.brand ?? null };
+    const variantsArg = (createdData?.variants as { create?: Array<Record<string, unknown>> })?.create ?? [];
+    const createdVariants = variantsArg.map((v, i) => ({ id: `variant-${i}`, ...v }));
+    return { ...product, ...createdData, variants: createdVariants, brand: createdData.brand ?? null };
   });
   stub(prisma.product, 'update', async (argument) => {
     const data = (argument as { data: Record<string, unknown> }).data;
@@ -471,6 +511,7 @@ test('staff can create and edit products but cannot archive; administrators can 
     else updatedData = data;
     return { ...product, ...data };
   });
+  stub(prisma.productVariant, 'update', async () => ({}));
   stub(prisma.inventoryMovement, 'create', async (argument) => {
     inventoryMovements.push(argument as Record<string, unknown>);
     return {};
@@ -780,6 +821,7 @@ async function assertMonimeSessionMismatchRejected(
 test('Monime completed webhook verifies current session and records payment as paid', async () => {
   let paymentStatus = '';
   let orderStatus: unknown;
+  let lifecycleStatus: unknown;
   stubMonimeWebhookPayment();
   stubMonimeSession('completed');
   stub(prisma.paymentEvent, 'create', async () => ({}));
@@ -789,6 +831,7 @@ test('Monime completed webhook verifies current session and records payment as p
   });
   stub(prisma.order, 'update', async (argument) => {
     orderStatus = (argument as { data: { paymentStatus: string } }).data.paymentStatus;
+    lifecycleStatus = (argument as { data: { status?: string } }).data.status;
     return {};
   });
   stub(prisma.notification, 'create', async () => ({}));
@@ -804,6 +847,7 @@ test('Monime completed webhook verifies current session and records payment as p
   assert.equal(response.status, 200);
   assert.equal(paymentStatus, 'PAID');
   assert.equal(orderStatus, 'PAID');
+  assert.equal(lifecycleStatus, 'CONFIRMED');
 });
 
 test('Monime completed webhook rejects amount mismatches without updating payment', async () => {
@@ -879,6 +923,45 @@ test('Monime webhook rejects invalid signatures before loading or changing payme
   assert.equal(paymentLookups, 0);
 });
 
+test('Monime webhook accepts requests from external origins and proxies without CSRF rejection', async () => {
+  const rawBody = ` {\n  "apiVersion": "caph.2025-08-23",\n  "event": { "id": "wke-external-origin", "name": "external.probe", "timestamp": "2026-11-14T10:00:00Z" },\n  "object": { "id": "chk-external-origin", "type": "checkout_session" },\n  "data": { "id": "chk-external-origin" }\n} `;
+  const response = await fetch(`${baseUrl}/payments/webhooks/monime`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Origin': 'https://petroleum-blizzard-implosive.ngrok-free.dev',
+      'monime-signature': monimeSignature(rawBody),
+    },
+    body: rawBody,
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { data: { accepted: true, ignored: true } });
+});
+
+test('Monime compatibility webhook accepts a correctly signed raw body at the registered path', async () => {
+  const rawBody = ` {\n  "apiVersion": "caph.2025-08-23",\n  "event": { "id": "wke-compatibility", "name": "compatibility.probe", "timestamp": "2026-11-14T10:00:00Z" },\n  "object": { "id": "chk-compatibility", "type": "checkout_session" },\n  "data": { "id": "chk-compatibility" }\n} `;
+  const response = await fetch(`${originUrl}/webhooks/monime`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'monime-signature': monimeSignature(rawBody) },
+    body: rawBody,
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { data: { accepted: true, ignored: true } });
+});
+
+test('Monime compatibility webhook rejects invalid signatures at the registered path', async () => {
+  let paymentLookups = 0;
+  stub(prisma.payment, 'findFirst', async () => { paymentLookups += 1; return null; });
+  const rawBody = monimeWebhookBody('checkout_session.completed', 'completed');
+  const response = await fetch(`${originUrl}/webhooks/monime`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'monime-signature': 't=1,v1=invalid' },
+    body: rawBody,
+  });
+  assert.equal(response.status, 401);
+  assert.equal(paymentLookups, 0);
+});
+
 test('checkout prices orders from the database, reserves stock, and empties the cart transactionally', async () => {
   const product = {
     id: 'product-test-1',
@@ -887,18 +970,31 @@ test('checkout prices orders from the database, reserves stock, and empties the 
     stock: 5,
     isActive: true,
   };
+  const variant = {
+    id: 'variant-test-1',
+    productId: product.id,
+    name: 'Standard',
+    quantity: '1',
+    unit: 'item',
+    sku: 'RICE-001',
+    price: '125.50',
+    stock: 5,
+    isActive: true,
+    isDefault: true,
+  };
   let orderCreate: Record<string, unknown> | undefined;
   let stockUpdate: Record<string, unknown> | undefined;
   let cartCleared = false;
   stub(prisma.order, 'findFirst', async () => null);
   stub(prisma.cart, 'findUnique', async () => ({
     id: 'cart-test-1',
-    items: [{ productId: product.id, quantity: 2, product }],
+    items: [{ productId: product.id, variantId: variant.id, quantity: 2, product, variant }],
   }));
-  stub(prisma.product, 'updateMany', async (argument) => {
+  stub(prisma.productVariant, 'updateMany', async (argument) => {
     stockUpdate = argument as Record<string, unknown>;
     return { count: 1 };
   });
+  stub(prisma.product, 'update', async () => ({ ...product }));
   stub(prisma.inventoryMovement, 'create', async () => ({}));
   stub(prisma.order, 'create', async (argument) => {
     orderCreate = argument as Record<string, unknown>;
@@ -924,7 +1020,7 @@ test('checkout prices orders from the database, reserves stock, and empties the 
 
   assert.equal(order.id, 'order-test-1');
   assert.equal(((orderCreate?.data as { subtotal: { toString(): string } }).subtotal).toString(), '251');
-  assert.equal(((orderCreate?.data as { total: { toString(): string } }).total).toString(), '20251');
+  assert.equal(((orderCreate?.data as { total: { toString(): string } }).total).toString(), '301');
   assert.equal((stockUpdate?.where as { stock: { gte: number } }).stock.gte, 2);
   assert.equal((stockUpdate?.data as { stock: { decrement: number } }).stock.decrement, 2);
   assert.equal(cartCleared, true);
@@ -1015,4 +1111,78 @@ test('failed Monime orders can be cancelled and audited without refund authoriza
   const order = await updateOrderStatus('order-test-1', 'CANCELLED', 'staff-test-1');
   assert.equal(order.status, 'CANCELLED');
   assert.equal(updatedStatus, 'CANCELLED');
+});
+
+test('product creation validates required fields and returns field-level details', async () => {
+  stub(prisma.user, 'findUnique', async () => ({ ...testUser, role: 'ADMIN', isActive: true }));
+
+  // Missing name, price, SKU, etc.
+  const invalidResponse = await fetch(`${baseUrl}/admin/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookieFor('ADMIN') },
+    body: JSON.stringify({
+      name: '',
+      sku: '',
+      categoryId: '',
+      price: '-10.00',
+      stock: -5,
+      description: 'hi',
+    }),
+  });
+
+  assert.equal(invalidResponse.status, 400);
+  const result = await invalidResponse.json() as { error: string; code: string; details: Array<{ path: string; message: string }> };
+  assert.equal(result.code, 'VALIDATION_ERROR');
+  assert.ok(Array.isArray(result.details));
+  assert.ok(result.details.some((d) => d.path === 'name'));
+  assert.ok(result.details.some((d) => d.path === 'sku'));
+  assert.ok(result.details.some((d) => d.path === 'categoryId'));
+  assert.ok(result.details.some((d) => d.path === 'price'));
+  assert.ok(result.details.some((d) => d.path === 'stock'));
+});
+
+test('product creation translates duplicate SKU unique constraint to 409 conflict with field path', async () => {
+  stub(prisma.user, 'findUnique', async () => ({ ...testUser, role: 'ADMIN', isActive: true }));
+  stub(prisma.category, 'findUnique', async () => ({ id: 'cat-1', name: 'Pantry' }));
+  stub(prisma, '$transaction', async () => {
+    const error = new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`sku`)', {
+      code: 'P2002',
+      clientVersion: '5.22.0',
+      meta: { target: ['sku'] },
+    });
+    throw error;
+  });
+
+  const response = await fetch(`${baseUrl}/admin/products`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Cookie: cookieFor('ADMIN') },
+    body: JSON.stringify({
+      name: 'Duplicate Rice',
+      sku: 'DUPLICATE-SKU',
+      categoryId: 'cat-1',
+      price: '15.00',
+      stock: 10,
+      description: 'Test pantry description.',
+      imageUrl: 'https://images.example.test/rice.jpg',
+      altText: 'Alt text',
+      imageSource: 'test',
+      license: 'MIT License',
+      variants: [{
+        name: 'Standard',
+        quantity: '1',
+        unit: 'kg',
+        sku: 'DUPLICATE-SKU',
+        price: '15.00',
+        stock: 10,
+        isActive: true,
+        isDefault: true,
+      }],
+    }),
+  });
+
+  assert.equal(response.status, 409);
+  const result = await response.json() as { error: string; code: string; details: Array<{ path: string; message: string }> };
+  assert.equal(result.code, 'CONFLICT');
+  assert.equal(result.error, 'This SKU is already assigned to another product.');
+  assert.equal(result.details[0]?.path, 'sku');
 });

@@ -36,7 +36,7 @@ export function CatalogPage() {
     if (category) search.set('category', category);
     if (minPrice) search.set('minPrice', minPrice);
     if (maxPrice) search.set('maxPrice', maxPrice);
-    apiGet<{ products: CatalogProduct[]; pagination: { pages: number } }>(`/products?${search}`)
+    apiGet<{ products: StoreProduct[]; pagination: { pages: number } }>(`/products?${search}`)
       .then((result) => {
         if (active) {
           setProducts(result.products);

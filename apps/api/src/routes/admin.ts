@@ -147,12 +147,12 @@ router.patch('/categories/:id', requirePermission('categories:manage'), asyncHan
 
 const productVariantSchema = z.object({
   id: z.string().min(1).optional(),
-  name: z.string().trim().min(1).max(100),
-  quantity: z.string().regex(/^\d+(\.\d{1,3})?$/).refine((value) => Number(value) > 0),
-  unit: z.string().trim().min(1).max(40),
-  sku: z.string().trim().min(2).max(50),
-  price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  stock: z.number().int().min(0).max(100000),
+  name: z.string().trim().min(1, 'Please enter a variant name.').max(100),
+  quantity: z.string().regex(/^\d+(\.\d{1,3})?$/, 'Enter a valid package quantity.').refine((value) => Number(value) > 0, 'Enter a valid package quantity.'),
+  unit: z.string().trim().min(1, 'Please enter a package unit.').max(40),
+  sku: z.string().trim().min(2, 'Please enter a SKU.').max(50),
+  price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter a valid price greater than zero.').refine((value) => Number(value) > 0, 'Enter a valid price greater than zero.'),
+  stock: z.number().int().min(0, 'Stock quantity cannot be negative.').max(100000),
   isActive: z.boolean(),
   isDefault: z.boolean(),
 });
@@ -172,20 +172,20 @@ const productVariantsSchema = z.array(productVariantSchema).min(1).max(50).super
 });
 
 const productSchema = z.object({
-  sku: z.string().trim().min(2).max(50),
-  name: z.string().trim().min(2).max(160),
-  brand: z.string().trim().max(100).nullable().optional(),
-  description: z.string().trim().min(5).max(3000),
-  categoryId: z.string().min(1),
-  price: z.string().regex(/^\d+(\.\d{1,2})?$/),
-  stock: z.number().int().min(0).max(100000),
-  imageUrl: z.string().url(),
+  sku: z.string().trim().min(2, 'Please enter a SKU.').max(50),
+  name: z.string().trim().min(2, 'Please enter a product name.').max(160),
+  brand: z.string().trim().max(100).nullable().optional().or(z.literal('').transform(() => null)),
+  description: z.string().trim().min(5, 'Please enter a product description.').max(3000),
+  categoryId: z.string().min(1, 'Please select a product category.'),
+  price: z.string().regex(/^\d+(\.\d{1,2})?$/, 'Enter a valid price greater than zero.').refine((value) => Number(value) > 0, 'Enter a valid price greater than zero.'),
+  stock: z.number().int().min(0, 'Stock quantity cannot be negative.').max(100000),
+  imageUrl: z.string().url('A valid image URL is required.'),
   thumbnailUrl: z.string().url().optional(),
-  altText: z.string().trim().min(3).max(250),
+  altText: z.string().trim().min(3, 'Image alt text must be at least 3 characters.').max(250),
   imageSource: z.string().trim().min(3).max(150),
-  sourcePageUrl: z.string().url().optional(),
-  license: z.string().trim().min(3).max(500),
-  attribution: z.string().trim().max(500).optional(),
+  sourcePageUrl: z.string().trim().url('Source page must be a valid URL.').optional().or(z.literal('').transform(() => undefined)),
+  license: z.string().trim().min(3, 'Image license / usage rights must be at least 3 characters.').max(500),
+  attribution: z.string().trim().max(500).optional().or(z.literal('').transform(() => undefined)),
   cloudinaryPublicId: z.string().trim().max(200).optional(),
   reviewedAt: z.string().datetime().optional(),
   imageStatus: z.enum(['APPROVED', 'NEEDS_IMAGE', 'NEEDS_REVIEW']).default('NEEDS_REVIEW'),
@@ -251,7 +251,6 @@ router.post('/products', requirePermission('catalog:write'), asyncHandler(async 
             isDefault: variant.isDefault,
           })),
         },
-        include: { variants: true },
         productImages: {
           create: {
             imageUrl: imageUrls.imageUrl,
@@ -261,6 +260,7 @@ router.post('/products', requirePermission('catalog:write'), asyncHandler(async 
           },
         },
       },
+      include: { variants: true },
     });
     for (const variant of variants.filter((item) => item.stock > 0)) {
       await transaction.inventoryMovement.create({
@@ -428,7 +428,11 @@ router.patch('/products/:id', requirePermission('catalog:write'), asyncHandler(a
         data: { imageUrl: imageUrls.imageUrl, altText: input.altText },
       });
     }
-    const changedFields = Object.keys(productChanges);
+    const changedFields = Object.keys(productChanges).map((field) => (
+      field === 'stock' && stock !== undefined && stock !== before.stock
+        ? `stock ${before.stock} -> ${stock}`
+        : field
+    ));
     const action = productChanges.isActive === false && before.isActive
       ? 'PRODUCT_ARCHIVED'
       : productChanges.isActive === true && !before.isActive

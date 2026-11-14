@@ -99,10 +99,21 @@ export function DashboardPage() {
   const [auditLogs, setAuditLogs] = useState<AuditEntry[]>([]);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [variantDrafts, setVariantDrafts] = useState<VariantDraft[]>([emptyVariant()]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [cachedUpload, setCachedUpload] = useState<{ file: File; upload: { publicId: string; imageUrl: string; thumbnailUrl: string } } | null>(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, setBusy] = useState(false);
   const productFormRef = useRef<HTMLFormElement>(null);
+
+  const clearFieldError = (field: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev;
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const loadData = useCallback(async () => {
     const [dashboard, productList, orderList, categoryList] = await Promise.all([
@@ -133,38 +144,146 @@ export function DashboardPage() {
     setBusy(true);
     setError('');
     setNotice('');
+    setFieldErrors({});
+
+    const clientErrors: Record<string, string> = {};
+
+    const name = String(values.get('name') || '').trim();
+    if (!name) clientErrors.name = 'Please enter a product name.';
+    else if (name.length < 2) clientErrors.name = 'Product name must be at least 2 characters.';
+
+    const categoryId = String(values.get('categoryId') || '').trim();
+    if (!categoryId) clientErrors.categoryId = 'Please select a product category.';
+
+    const description = String(values.get('description') || '').trim();
+    if (!description) clientErrors.description = 'Please enter a product description.';
+    else if (description.length < 5) clientErrors.description = 'Product description must be at least 5 characters.';
+
+    const altText = String(values.get('altText') || '').trim();
+    if (!altText) clientErrors.altText = 'Please enter image alt text.';
+    else if (altText.length < 3) clientErrors.altText = 'Image alt text must be at least 3 characters.';
+
+    const file = values.get('image');
+    const hasNewFile = file instanceof File && file.size > 0;
+
+    if (!editingProduct && !hasNewFile && !cachedUpload) {
+      clientErrors.image = 'Choose an approved product image before creating the product.';
+    } else if (hasNewFile) {
+      const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+      if (!allowed.includes(file.type)) {
+        clientErrors.image = 'Only JPEG, PNG, and WebP images are accepted.';
+      } else if (file.size > 10 * 1024 * 1024) {
+        clientErrors.image = 'Image exceeds the 10 MB upload limit.';
+      }
+    }
+
+    if (!editingProduct) {
+      const license = String(values.get('license') || '').trim();
+      if (!license) clientErrors.license = 'Please enter the image license or usage rights.';
+      else if (license.length < 3) clientErrors.license = 'License must be at least 3 characters.';
+
+      const sourcePageUrl = String(values.get('sourcePageUrl') || '').trim();
+      if (sourcePageUrl) {
+        try {
+          new URL(sourcePageUrl);
+        } catch {
+          clientErrors.sourcePageUrl = 'Enter a valid URL (including http:// or https://).';
+        }
+      }
+    }
+
+    const activeVariants = variantDrafts.filter((v) => v.isActive);
+    if (!activeVariants.length) {
+      clientErrors.variants = 'Keep at least one active package size.';
+    }
+
+    const activeDefault = activeVariants.find((v) => v.isDefault);
+    if (!activeDefault) {
+      clientErrors.variants = 'Select exactly one active package size as the default.';
+    } else if (!activeDefault.sku.trim()) {
+      clientErrors.sku = 'Please enter a SKU.';
+    }
+
+    const seenSkus = new Set<string>();
+    variantDrafts.forEach((variant, index) => {
+      if (!variant.isActive) return;
+      const vSku = variant.sku.trim();
+      if (!vSku) {
+        clientErrors[`variant_${index}_sku`] = 'Please enter a SKU.';
+      } else if (seenSkus.has(vSku)) {
+        clientErrors[`variant_${index}_sku`] = 'This SKU is already used by another package size.';
+      } else {
+        seenSkus.add(vSku);
+      }
+
+      const vPrice = Number(variant.price);
+      if (!variant.price || isNaN(vPrice) || vPrice <= 0) {
+        clientErrors[`variant_${index}_price`] = 'Enter a valid price greater than zero.';
+      }
+
+      const vQty = Number(variant.quantity);
+      if (!variant.quantity || isNaN(vQty) || vQty <= 0) {
+        clientErrors[`variant_${index}_quantity`] = 'Enter a valid package quantity.';
+      }
+
+      if (!variant.unit.trim()) {
+        clientErrors[`variant_${index}_unit`] = 'Please enter a package unit.';
+      }
+
+      if (variant.stock < 0) {
+        clientErrors[`variant_${index}_stock`] = 'Stock quantity cannot be negative.';
+      }
+    });
+
+    if (Object.keys(clientErrors).length > 0) {
+      setFieldErrors(clientErrors);
+      setError('Please correct the highlighted fields before submitting.');
+      setBusy(false);
+      return;
+    }
+
     try {
-      const file = values.get('image');
-      let upload: { publicId: string; imageUrl: string; thumbnailUrl: string } | undefined;
-      if (file instanceof File && file.size) {
+      let upload = cachedUpload?.upload;
+      if (hasNewFile && (!cachedUpload || cachedUpload.file !== file)) {
         const uploadData = new FormData();
         uploadData.append('file', file);
         uploadData.append('folder', 'monoprix/products');
-        const result = await apiUpload<{ upload: NonNullable<typeof upload> }>('/admin/images/upload', uploadData);
-        upload = result.upload;
-      } else if (!editingProduct) {
-        throw new Error('Choose an approved product image before creating the product.');
+        try {
+          const result = await apiUpload<{ upload: NonNullable<typeof upload> }>('/admin/images/upload', uploadData);
+          upload = result.upload;
+          setCachedUpload({ file, upload: result.upload });
+        } catch (uploadIssue) {
+          if (uploadIssue instanceof ApiError) {
+            setFieldErrors({ image: uploadIssue.message });
+            throw new Error(`Image upload failed: ${uploadIssue.message}`);
+          }
+          throw uploadIssue;
+        }
       }
+
       const reviewed = values.get('reviewed') === 'on';
-      const activeDefault = variantDrafts.find((variant) => variant.isDefault && variant.isActive);
-      if (!activeDefault?.sku.trim()) throw new Error('Enter a SKU for the default package size.');
-      if (!variantDrafts.some((variant) => variant.isActive)) throw new Error('Keep at least one active package size.');
+      const defaultVariant = activeDefault!;
       const variants = variantDrafts.map((variant) => ({
         ...variant,
         sku: variant.sku.trim(),
         price: String(variant.price),
         quantity: String(variant.quantity),
       }));
+
+      const sourcePageVal = String(values.get('sourcePageUrl') || '').trim();
+      const attributionVal = String(values.get('attribution') || '').trim();
+      const brandVal = String(values.get('brand') || '').trim();
+
       const productInput = {
-        sku: activeDefault.sku.trim(),
-        name: String(values.get('name')),
-        brand: String(values.get('brand') || '').trim() || null,
-        description: String(values.get('description')),
-        categoryId: String(values.get('categoryId')),
-        price: String(activeDefault.price),
-        stock: Number(activeDefault.stock),
+        sku: defaultVariant.sku.trim(),
+        name,
+        brand: brandVal || null,
+        description,
+        categoryId,
+        price: String(defaultVariant.price),
+        stock: Number(defaultVariant.stock),
         variants,
-        altText: String(values.get('altText')),
+        altText,
         ...(upload ? {
           imageUrl: upload.imageUrl,
           thumbnailUrl: upload.thumbnailUrl,
@@ -175,22 +294,55 @@ export function DashboardPage() {
         } : {}),
         ...(!editingProduct ? {
           imageSource: 'admin-uploaded-cloudinary',
-          sourcePageUrl: values.get('sourcePageUrl') || undefined,
-          license: String(values.get('license')),
-          attribution: values.get('attribution') || undefined,
+          sourcePageUrl: sourcePageVal || undefined,
+          license: String(values.get('license') || '').trim(),
+          attribution: attributionVal || undefined,
           reviewedAt: reviewed ? new Date().toISOString() : undefined,
           imageStatus: reviewed ? 'APPROVED' as const : 'NEEDS_REVIEW' as const,
         } : {}),
       };
-      if (editingProduct) await apiPatch(`/admin/products/${editingProduct.id}`, productInput);
-      else await apiPost('/admin/products', { ...productInput, license: String(values.get('license')) });
+
+      if (editingProduct) {
+        await apiPatch(`/admin/products/${editingProduct.id}`, productInput);
+      } else {
+        await apiPost('/admin/products', productInput);
+      }
+
       form.reset();
       setEditingProduct(null);
+      setCachedUpload(null);
+      setFieldErrors({});
       setVariantDrafts([emptyVariant()]);
-      setNotice(`Product ${editingProduct ? 'updated' : 'saved'}. Its image is visible to customers only if approved.`);
+      setNotice(`Product ${editingProduct ? 'updated' : 'saved successfully'}. Its image is visible to customers only if approved.`);
       await loadData();
     } catch (issue) {
-      setError(issue instanceof Error ? issue.message : 'Product could not be saved.');
+      if (issue instanceof ApiError) {
+        if (issue.details && Array.isArray(issue.details)) {
+          const backendFieldErrors: Record<string, string> = {};
+          issue.details.forEach((d) => {
+            if (d.path) {
+              backendFieldErrors[d.path] = d.message;
+              if (d.path.startsWith('variants.')) {
+                const parts = d.path.split('.');
+                const vIdx = parts[1];
+                const vProp = parts[2];
+                if (vIdx !== undefined && vProp) {
+                  backendFieldErrors[`variant_${vIdx}_${vProp}`] = d.message;
+                }
+              }
+            }
+          });
+          if (Object.keys(backendFieldErrors).length > 0) {
+            setFieldErrors(backendFieldErrors);
+          }
+        }
+        if (issue.code === 'CONFLICT' || issue.status === 409) {
+          setFieldErrors((prev) => ({ ...prev, sku: issue.message }));
+        }
+        setError(issue.message);
+      } else {
+        setError(issue instanceof Error ? issue.message : 'Product could not be saved.');
+      }
     } finally {
       setBusy(false);
     }
@@ -223,6 +375,7 @@ export function DashboardPage() {
     const form = productFormRef.current;
     if (!form) return;
     setEditingProduct(product);
+    setFieldErrors({});
     (form.elements.namedItem('name') as HTMLInputElement).value = product.name;
     (form.elements.namedItem('brand') as HTMLInputElement).value = product.brand ?? '';
     (form.elements.namedItem('categoryId') as HTMLSelectElement).value = product.categoryId;
@@ -237,6 +390,8 @@ export function DashboardPage() {
     const imageInput = productFormRef.current?.elements.namedItem('image');
     if (imageInput instanceof HTMLInputElement) imageInput.required = true;
     setEditingProduct(null);
+    setCachedUpload(null);
+    setFieldErrors({});
     setVariantDrafts([emptyVariant()]);
   }
 
@@ -506,22 +661,71 @@ export function DashboardPage() {
             </section>
             <section className="summary-box">
               <h2>{editingProduct ? `Edit ${editingProduct.name}` : 'Add a product'}</h2>
-              <form ref={productFormRef} className="form-grid admin-form" onSubmit={submitProduct}>
-                <label className="field"><span>Product name</span><input name="name" required maxLength={160} /></label>
-                <label className="field"><span>Brand <small>(optional)</small></span><input name="brand" maxLength={100} /></label>
-                <label className="field"><span>Category</span><select name="categoryId" required defaultValue=""><option value="" disabled>Select category</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
+              <form ref={productFormRef} className="form-grid admin-form" onSubmit={submitProduct} noValidate>
+                <label className={`field ${fieldErrors.name ? 'has-error' : ''}`}>
+                  <span>Product name</span>
+                  <input name="name" maxLength={160} onChange={() => clearFieldError('name')} aria-invalid={Boolean(fieldErrors.name)} />
+                  {fieldErrors.name && <span className="field-error" role="alert">{fieldErrors.name}</span>}
+                </label>
+                <label className={`field ${fieldErrors.brand ? 'has-error' : ''}`}>
+                  <span>Brand <small>(optional)</small></span>
+                  <input name="brand" maxLength={100} onChange={() => clearFieldError('brand')} aria-invalid={Boolean(fieldErrors.brand)} />
+                  {fieldErrors.brand && <span className="field-error" role="alert">{fieldErrors.brand}</span>}
+                </label>
+                <label className={`field ${fieldErrors.categoryId ? 'has-error' : ''}`}>
+                  <span>Category</span>
+                  <select name="categoryId" defaultValue="" onChange={() => clearFieldError('categoryId')} aria-invalid={Boolean(fieldErrors.categoryId)}>
+                    <option value="" disabled>Select category</option>
+                    {categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}
+                  </select>
+                  {fieldErrors.categoryId && <span className="field-error" role="alert">{fieldErrors.categoryId}</span>}
+                </label>
                 <section className="variant-editor" aria-label="Product package sizes">
-                  <div className="panel-heading"><h3>Package sizes and prices</h3><button type="button" className="text-button" onClick={addVariant}>Add package size</button></div>
+                  <div className="panel-heading">
+                    <h3>Package sizes and prices</h3>
+                    <button type="button" className="text-button" onClick={addVariant}>Add package size</button>
+                  </div>
+                  {fieldErrors.variants && <p className="field-error" role="alert">{fieldErrors.variants}</p>}
                   {variantDrafts.map((variant, index) => (
                     <fieldset className={variant.isActive ? 'variant-row' : 'variant-row variant-inactive'} key={variant.id ?? `new-${index}`}>
                       <legend>{variant.name || `Package size ${index + 1}`}{variant.isActive ? '' : ' · inactive'}</legend>
                       <div className="variant-fields">
-                        <label className="field"><span>Variant name</span><input value={variant.name} disabled={!variant.isActive} maxLength={100} required={variant.isActive} onChange={(event) => updateVariant(index, { name: event.target.value })} placeholder="Half dozen" /></label>
-                        <label className="field"><span>Package quantity</span><input type="number" min="0.001" step="0.001" value={variant.quantity} disabled={!variant.isActive} required={variant.isActive} onChange={(event) => updateVariant(index, { quantity: event.target.value })} /></label>
-                        <label className="field"><span>Unit</span><input value={variant.unit} disabled={!variant.isActive} maxLength={40} required={variant.isActive} onChange={(event) => updateVariant(index, { unit: event.target.value })} placeholder="pieces, kg, litre" /></label>
-                        <label className="field"><span>SKU</span><input value={variant.sku} disabled={!variant.isActive} maxLength={50} required={variant.isActive} onChange={(event) => updateVariant(index, { sku: event.target.value })} /></label>
-                        <label className="field"><span>Price · SLE</span><input type="number" min="0.01" step="0.01" value={variant.price} disabled={!variant.isActive} required={variant.isActive} onChange={(event) => updateVariant(index, { price: event.target.value })} /></label>
-                        <label className="field"><span>Stock</span><input type="number" min="0" max="100000" step="1" value={variant.stock} disabled={!variant.isActive} required={variant.isActive} onChange={(event) => updateVariant(index, { stock: Number(event.target.value) })} /></label>
+                        <label className={`field ${fieldErrors[`variant_${index}_name`] ? 'has-error' : ''}`}>
+                          <span>Variant name</span>
+                          <input value={variant.name} disabled={!variant.isActive} maxLength={100} onChange={(event) => { updateVariant(index, { name: event.target.value }); clearFieldError(`variant_${index}_name`); }} placeholder="Half dozen" />
+                          {fieldErrors[`variant_${index}_name`] && <span className="field-error" role="alert">{fieldErrors[`variant_${index}_name`]}</span>}
+                        </label>
+                        <label className={`field ${fieldErrors[`variant_${index}_quantity`] ? 'has-error' : ''}`}>
+                          <span>Package quantity</span>
+                          <input type="number" min="0.001" step="0.001" value={variant.quantity} disabled={!variant.isActive} onChange={(event) => { updateVariant(index, { quantity: event.target.value }); clearFieldError(`variant_${index}_quantity`); }} />
+                          {fieldErrors[`variant_${index}_quantity`] && <span className="field-error" role="alert">{fieldErrors[`variant_${index}_quantity`]}</span>}
+                        </label>
+                        <label className={`field ${fieldErrors[`variant_${index}_unit`] ? 'has-error' : ''}`}>
+                          <span>Unit</span>
+                          <input value={variant.unit} disabled={!variant.isActive} maxLength={40} onChange={(event) => { updateVariant(index, { unit: event.target.value }); clearFieldError(`variant_${index}_unit`); }} placeholder="pieces, kg, litre" />
+                          {fieldErrors[`variant_${index}_unit`] && <span className="field-error" role="alert">{fieldErrors[`variant_${index}_unit`]}</span>}
+                        </label>
+                        <label className={`field ${fieldErrors[`variant_${index}_sku`] || (variant.isDefault && fieldErrors.sku) ? 'has-error' : ''}`}>
+                          <span>SKU</span>
+                          <input value={variant.sku} disabled={!variant.isActive} maxLength={50} onChange={(event) => { updateVariant(index, { sku: event.target.value }); clearFieldError(`variant_${index}_sku`); clearFieldError('sku'); }} />
+                          {(fieldErrors[`variant_${index}_sku`] || (variant.isDefault && fieldErrors.sku)) && (
+                            <span className="field-error" role="alert">{fieldErrors[`variant_${index}_sku`] || (variant.isDefault && fieldErrors.sku)}</span>
+                          )}
+                        </label>
+                        <label className={`field ${fieldErrors[`variant_${index}_price`] || (variant.isDefault && fieldErrors.price) ? 'has-error' : ''}`}>
+                          <span>Price · SLE</span>
+                          <input type="number" min="0.01" step="0.01" value={variant.price} disabled={!variant.isActive} onChange={(event) => { updateVariant(index, { price: event.target.value }); clearFieldError(`variant_${index}_price`); clearFieldError('price'); }} />
+                          {(fieldErrors[`variant_${index}_price`] || (variant.isDefault && fieldErrors.price)) && (
+                            <span className="field-error" role="alert">{fieldErrors[`variant_${index}_price`] || (variant.isDefault && fieldErrors.price)}</span>
+                          )}
+                        </label>
+                        <label className={`field ${fieldErrors[`variant_${index}_stock`] || (variant.isDefault && fieldErrors.stock) ? 'has-error' : ''}`}>
+                          <span>Stock</span>
+                          <input type="number" min="0" max="100000" step="1" value={variant.stock} disabled={!variant.isActive} onChange={(event) => { updateVariant(index, { stock: Number(event.target.value) }); clearFieldError(`variant_${index}_stock`); clearFieldError('stock'); }} />
+                          {(fieldErrors[`variant_${index}_stock`] || (variant.isDefault && fieldErrors.stock)) && (
+                            <span className="field-error" role="alert">{fieldErrors[`variant_${index}_stock`] || (variant.isDefault && fieldErrors.stock)}</span>
+                          )}
+                        </label>
                       </div>
                       <div className="variant-actions">
                         <label className="review-check"><input type="radio" name="defaultVariant" checked={variant.isDefault} disabled={!variant.isActive} onChange={() => selectDefaultVariant(index)} /> Default package</label>
@@ -531,13 +735,40 @@ export function DashboardPage() {
                     </fieldset>
                   ))}
                 </section>
-                <label className="field"><span>Description</span><textarea name="description" rows={3} required /></label>
-                <label className="field"><span>Replace product image <small>(JPEG, PNG or WebP; up to 10 MB)</small></span><input name="image" type="file" accept="image/jpeg,image/png,image/webp" required={!editingProduct} /></label>
-                <label className="field"><span>Image alt text</span><input name="altText" required maxLength={250} /></label>
+                <label className={`field ${fieldErrors.description ? 'has-error' : ''}`}>
+                  <span>Description</span>
+                  <textarea name="description" rows={3} onChange={() => clearFieldError('description')} aria-invalid={Boolean(fieldErrors.description)} />
+                  {fieldErrors.description && <span className="field-error" role="alert">{fieldErrors.description}</span>}
+                </label>
+                <label className={`field ${fieldErrors.image ? 'has-error' : ''}`}>
+                  <span>Replace product image <small>(JPEG, PNG or WebP; up to 10 MB)</small></span>
+                  <input name="image" type="file" accept="image/jpeg,image/png,image/webp" onChange={() => clearFieldError('image')} aria-invalid={Boolean(fieldErrors.image)} />
+                  {cachedUpload && !editingProduct && (
+                    <small style={{ color: '#2d6a4f', marginTop: '4px' }}>✓ Image uploaded to Cloudinary: {cachedUpload.upload.publicId}</small>
+                  )}
+                  {fieldErrors.image && <span className="field-error" role="alert">{fieldErrors.image}</span>}
+                </label>
+                <label className={`field ${fieldErrors.altText ? 'has-error' : ''}`}>
+                  <span>Image alt text</span>
+                  <input name="altText" maxLength={250} onChange={() => clearFieldError('altText')} aria-invalid={Boolean(fieldErrors.altText)} />
+                  {fieldErrors.altText && <span className="field-error" role="alert">{fieldErrors.altText}</span>}
+                </label>
                 {!editingProduct && <>
-                  <label className="field"><span>Source page (if applicable)</span><input name="sourcePageUrl" type="url" /></label>
-                  <label className="field"><span>Image license / usage rights</span><input name="license" required maxLength={500} /></label>
-                  <label className="field"><span>Attribution</span><input name="attribution" maxLength={500} /></label>
+                  <label className={`field ${fieldErrors.sourcePageUrl ? 'has-error' : ''}`}>
+                    <span>Source page (if applicable)</span>
+                    <input name="sourcePageUrl" type="url" onChange={() => clearFieldError('sourcePageUrl')} aria-invalid={Boolean(fieldErrors.sourcePageUrl)} />
+                    {fieldErrors.sourcePageUrl && <span className="field-error" role="alert">{fieldErrors.sourcePageUrl}</span>}
+                  </label>
+                  <label className={`field ${fieldErrors.license ? 'has-error' : ''}`}>
+                    <span>Image license / usage rights</span>
+                    <input name="license" maxLength={500} onChange={() => clearFieldError('license')} aria-invalid={Boolean(fieldErrors.license)} />
+                    {fieldErrors.license && <span className="field-error" role="alert">{fieldErrors.license}</span>}
+                  </label>
+                  <label className={`field ${fieldErrors.attribution ? 'has-error' : ''}`}>
+                    <span>Attribution</span>
+                    <input name="attribution" maxLength={500} onChange={() => clearFieldError('attribution')} aria-invalid={Boolean(fieldErrors.attribution)} />
+                    {fieldErrors.attribution && <span className="field-error" role="alert">{fieldErrors.attribution}</span>}
+                  </label>
                 </>}
                 <label className="review-check"><input name="reviewed" type="checkbox" /> I verified this image matches this item and usage rights allow publication.</label>
                 <button className="primary-btn" disabled={busy}>{busy ? 'Saving product…' : editingProduct ? 'Save product changes' : 'Upload and save product'}</button>
