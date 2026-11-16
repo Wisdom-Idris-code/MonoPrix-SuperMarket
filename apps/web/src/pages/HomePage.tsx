@@ -21,7 +21,7 @@ export function HomePage() {
 
   return (
     <Layout>
-      <div className="demo-banner">Independent concept demonstration · Sample catalogue and prices</div>
+      <div className="demo-banner">Independent online shopping · Monoprix Supermarket catalogue and prices</div>
       <section className="hero">
         <div className="container hero-grid">
           <div className="hero-copy">
@@ -50,7 +50,7 @@ export function HomePage() {
             <div className="hero-card">
               <span className="promo-chip">The weekly shop</span>
               <h2>Everyday essentials, made easy.</h2>
-              <p>Browse a curated selection with transparent sample pricing and real stock checks.</p>
+              <p>Browse a curated selection with transparent pricing and real stock checks.</p>
               <Link className="text-link" to="/catalog">Shop all groceries <ArrowRight size={16} /></Link>
             </div>
           </div>
