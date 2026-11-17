@@ -14,17 +14,30 @@ export function CatalogPage() {
   const [pages, setPages] = useState(1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [categoryError, setCategoryError] = useState('');
   const [notice, setNotice] = useState('');
   const query = params.get('q') ?? '';
   const category = params.get('category') ?? '';
   const sort = params.get('sort') ?? 'newest';
   const minPrice = params.get('minPrice') ?? '';
   const maxPrice = params.get('maxPrice') ?? '';
+  const [searchDraft, setSearchDraft] = useState(query);
+  const [minPriceDraft, setMinPriceDraft] = useState(minPrice);
+  const [maxPriceDraft, setMaxPriceDraft] = useState(maxPrice);
+
+  useEffect(() => {
+    setSearchDraft(query);
+    setMinPriceDraft(minPrice);
+    setMaxPriceDraft(maxPrice);
+  }, [maxPrice, minPrice, query]);
 
   useEffect(() => {
     apiGet<{ categories: Category[] }>('/categories')
       .then(({ categories: result }) => setCategories(result))
-      .catch((issue: unknown) => console.error('Unable to load categories:', issue));
+      .catch((issue: unknown) => {
+        console.error('Unable to load categories:', issue);
+        setCategoryError('Categories could not be loaded. You can still browse all products.');
+      });
   }, []);
 
   useEffect(() => {
@@ -58,20 +71,43 @@ export function CatalogPage() {
     setParams(next);
   }
 
+  function applyTextFilters(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const next = new URLSearchParams(params);
+    const filters = [
+      ['q', searchDraft.trim()],
+      ['minPrice', minPriceDraft],
+      ['maxPrice', maxPriceDraft],
+    ];
+    filters.forEach(([key, value]) => {
+      if (value) next.set(key, value);
+      else next.delete(key);
+    });
+    setPage(1);
+    setParams(next);
+  }
+
   return (
     <Layout>
       <main className="container catalog-page">
         <div className="section-header catalog-heading">
-          <div><p className="eyebrow">Monoprix Online · Demonstration catalogue</p><h1>Good things for your table.</h1></div>
-          <p>Sample product names and SLE prices for demonstration only.</p>
+          <div><p className="eyebrow">Monoprix Online · Current catalogue</p><h1>Good things for your table.</h1></div>
+          <p>Browse current products, prices and stock availability.</p>
         </div>
         <div className="catalog-layout">
           <aside className="catalog-filters">
             <h2>Refine your shop</h2>
-            <label className="field">
-              <span>Search products</span>
-              <input value={query} onChange={(event) => updateParam('q', event.target.value)} placeholder="Try rice or juice" />
-            </label>
+            <form className="catalog-filter-form" onSubmit={applyTextFilters}>
+              <label className="field">
+                <span>Search products</span>
+                <input value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} placeholder="Try rice or juice" />
+              </label>
+              <div className="price-filters">
+                <label className="field"><span>Minimum SLE</span><input type="number" min="0" value={minPriceDraft} onChange={(event) => setMinPriceDraft(event.target.value)} /></label>
+                <label className="field"><span>Maximum SLE</span><input type="number" min="0" value={maxPriceDraft} onChange={(event) => setMaxPriceDraft(event.target.value)} /></label>
+              </div>
+              <button className="ghost-btn" type="submit">Apply filters</button>
+            </form>
             <label className="field">
               <span>Category</span>
               <select value={category} onChange={(event) => updateParam('category', event.target.value)}>
@@ -88,10 +124,7 @@ export function CatalogPage() {
                 <option value="name">Name</option>
               </select>
             </label>
-            <div className="price-filters">
-              <label className="field"><span>Minimum SLE</span><input type="number" min="0" value={minPrice} onChange={(event) => updateParam('minPrice', event.target.value)} /></label>
-              <label className="field"><span>Maximum SLE</span><input type="number" min="0" value={maxPrice} onChange={(event) => updateParam('maxPrice', event.target.value)} /></label>
-            </div>
+            {categoryError && <p className="field-error" role="status">{categoryError}</p>}
           </aside>
           <section className="catalog-results" aria-live="polite">
             {notice && <p className="notice" role="status">{notice}</p>}

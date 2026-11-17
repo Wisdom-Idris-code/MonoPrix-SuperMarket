@@ -5,6 +5,7 @@ import { useForm } from 'react-hook-form';
 import { z } from 'zod';
 import { Layout } from '../components/Layout';
 import { ApiError, apiPost } from '../lib/api';
+import { flushPendingCartWrites } from '../lib/cartSync';
 import { formatSLE, useAuthStore, useCartStore } from '../lib/store';
 
 const checkoutSchema = z.object({
@@ -64,6 +65,7 @@ export function CheckoutPage() {
     if (!idempotencyKey.current) idempotencyKey.current = crypto.randomUUID();
 
     try {
+      await flushPendingCartWrites();
       const { order: created } = await apiPost<{ order: CreatedOrder }>('/orders', {
         ...fields,
         email: fields.email || undefined,
@@ -132,9 +134,9 @@ export function CheckoutPage() {
                   <span>Choose how you would pay</span>
                   <select {...register('paymentMethod')}>
                     <option value="CASH_ON_DELIVERY">Cash on delivery</option>
-                    <option value="ORANGE_MONEY">Orange Money — Monime</option>
-                    <option value="VISA">Visa — Monime</option>
-                    <option value="MASTERCARD">Mastercard — Monime</option>
+                    <option value="ORANGE_MONEY">Orange-Money/Afri-Money</option>
+                    <option value="VISA">Visa</option>
+                    <option value="MASTERCARD">Mastercard</option>
                   </select>
                 </label>
                 <p className="demo-payment-note">Electronic payments are handled by Monime’s secure hosted checkout. Monoprix never stores your card or mobile money details.</p>

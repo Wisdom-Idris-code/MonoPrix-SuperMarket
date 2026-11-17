@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { Layout } from '../components/Layout';
 import type { StoreVariant } from '../components/ProductCard';
 import { addCartProduct } from '../lib/cartSync';
+import { flyProductToCart } from '../lib/cartAnimation';
 import { apiGet } from '../lib/api';
-import { formatSLE } from '../lib/store';
+import { formatSLE, useCartStore } from '../lib/store';
 
 type ProductDetail = {
   id: string;
@@ -32,6 +33,9 @@ export function ProductPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const imageRef = useRef<HTMLImageElement>(null);
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [added, setAdded] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -53,6 +57,10 @@ export function ProductPage() {
     return () => { active = false; };
   }, [slug]);
 
+  useEffect(() => () => {
+    if (successTimer.current) clearTimeout(successTimer.current);
+  }, []);
+
   const variants = product?.variants?.length
     ? product.variants
     : product ? [{
@@ -67,11 +75,17 @@ export function ProductPage() {
       isDefault: true,
     }] : [];
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+  const cartQuantity = useCartStore((state) => state.items.find((item) => item.id === selectedVariant?.id)?.quantity ?? 0);
+  const remainingStock = Math.max(0, (selectedVariant?.stock ?? 0) - cartQuantity);
 
-  async function add() {
-    if (!product || !selectedVariant) return;
-    try {
-      await addCartProduct({
+  useEffect(() => {
+    if (remainingStock > 0) setQuantity((value) => Math.min(value, remainingStock));
+  }, [remainingStock]);
+
+  function add() {
+    if (!product || !selectedVariant || remainingStock < 1) return;
+    const quantityToAdd = Math.min(quantity, remainingStock);
+    const persistence = addCartProduct({
         id: selectedVariant.id,
         productId: product.id,
         variantId: selectedVariant.id,
@@ -84,11 +98,17 @@ export function ProductPage() {
         stock: selectedVariant.stock,
         imageUrl: product.imageUrl,
         altText: product.altText,
-      }, quantity);
-      setNotice(`${quantity} × ${product.name} (${selectedVariant.name}) added to your cart.`);
-    } catch (issue) {
-      setNotice(issue instanceof Error ? issue.message : 'Could not add that item.');
-    }
+      }, quantityToAdd);
+    flyProductToCart(imageRef.current, product.imageUrl);
+    setAdded(true);
+    if (successTimer.current) clearTimeout(successTimer.current);
+    successTimer.current = setTimeout(() => setAdded(false), 1300);
+    setNotice(`${quantityToAdd} × ${product.name} (${selectedVariant.name}) added to your cart.`);
+    void persistence.catch((issue: unknown) => {
+      if (successTimer.current) clearTimeout(successTimer.current);
+      setAdded(false);
+      setNotice(issue instanceof Error ? issue.message : 'Cart could not be saved. Please try again.');
+    });
   }
 
   return (
@@ -103,6 +123,7 @@ export function ProductPage() {
               <section className="product-gallery">
                 <div className="product-detail-image">
                   <img
+                    ref={imageRef}
                     src={selectedImage || product.imageUrl}
                     alt={product.altText}
                     width="900"
@@ -154,9 +175,11 @@ export function ProductPage() {
                   <div className="quantity-picker" aria-label="Quantity">
                     <button type="button" aria-label="Decrease quantity" disabled={quantity <= 1} onClick={() => setQuantity((value) => value - 1)}>−</button>
                     <span>{quantity}</span>
-                    <button type="button" aria-label="Increase quantity" disabled={quantity >= (selectedVariant?.stock ?? 0)} onClick={() => setQuantity((value) => Math.min(selectedVariant?.stock ?? 0, value + 1))}>+</button>
+                    <button type="button" aria-label="Increase quantity" disabled={quantity >= remainingStock} onClick={() => setQuantity((value) => Math.min(remainingStock, value + 1))}>+</button>
                   </div>
-                  <button className="primary-btn" disabled={!selectedVariant?.isActive || (selectedVariant?.stock ?? 0) < 1} onClick={add}>Add to cart</button>
+                  <button className={added ? 'primary-btn added-btn' : 'primary-btn'} disabled={!selectedVariant?.isActive || remainingStock < 1} onClick={add}>
+                    {added ? 'Added ✓' : 'Add to cart'}
+                  </button>
                 </div>
                 {notice && <p className="notice" role="status">{notice}</p>}
                 <div className="demo-product-note">Demonstration product and price. Product photography is awaiting review.</div>

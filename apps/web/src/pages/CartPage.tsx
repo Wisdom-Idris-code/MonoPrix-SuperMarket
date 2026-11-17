@@ -1,67 +1,29 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Layout } from '../components/Layout';
-import { apiDelete, apiPatch } from '../lib/api';
-import { useAuthStore, useCartStore, formatSLE } from '../lib/store';
-import { replaceFromServerCart } from '../lib/cartSync';
-
-type ServerCart = {
-  items: Array<{
-    id: string;
-    productId: string;
-    variantId: string;
-    name: string;
-    slug: string;
-    variantName: string;
-    variantQuantity: string;
-    variantUnit: string;
-    price: string;
-    quantity: number;
-    stock: number;
-    imageUrl: string;
-    altText: string;
-  }>;
-};
+import { removeCartProduct, updateCartProductQuantity } from '../lib/cartSync';
+import { useCartStore, formatSLE } from '../lib/store';
 
 export function CartPage() {
   const items = useCartStore((state) => state.items);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
-  const removeItem = useCartStore((state) => state.removeItem);
-  const setItems = useCartStore((state) => state.setItems);
-  const user = useAuthStore((state) => state.user);
   const [notice, setNotice] = useState('');
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryFee = subtotal > 0 ? 50 : 0;
   const total = subtotal + deliveryFee;
 
   async function changeQuantity(itemId: string, value: number) {
-    const item = items.find((entry) => entry.id === itemId);
-    if (!item) return;
-    const quantity = Math.min(item.stock, Math.max(0, value));
+    setNotice('');
     try {
-      if (user && item.serverItemId) {
-        const { cart } = await apiPatch<{ cart: ServerCart }>(`/cart/items/${item.serverItemId}`, { quantity });
-        await replaceFromServerCart(cart);
-      } else {
-        updateQuantity(itemId, quantity);
-      }
-      setNotice('');
+      await updateCartProductQuantity(itemId, value);
     } catch (issue) {
       setNotice(issue instanceof Error ? issue.message : 'Cart could not be updated.');
     }
   }
 
   async function remove(itemId: string) {
-    const item = items.find((entry) => entry.id === itemId);
-    if (!item) return;
+    setNotice('');
     try {
-      if (user && item.serverItemId) {
-        const { cart } = await apiDelete<{ cart: ServerCart }>(`/cart/items/${item.serverItemId}`);
-        await replaceFromServerCart(cart);
-      } else {
-        removeItem(itemId);
-      }
-      setNotice('');
+      await removeCartProduct(itemId);
     } catch (issue) {
       setNotice(issue instanceof Error ? issue.message : 'Cart item could not be removed.');
     }

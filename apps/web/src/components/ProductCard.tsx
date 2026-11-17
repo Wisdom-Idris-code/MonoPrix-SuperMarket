@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { addCartProduct } from '../lib/cartSync';
-import { formatSLE } from '../lib/store';
+import { flyProductToCart } from '../lib/cartAnimation';
+import { formatSLE, useCartStore } from '../lib/store';
 
 export type StoreVariant = {
   id: string;
@@ -35,7 +36,10 @@ type Props = {
   onNotice: (message: string) => void;
 };
 
-export function ProductCard({ product, onNotice }: Props) {
+export const ProductCard = memo(function ProductCard({ product, onNotice }: Props) {
+  const imageRef = useRef<HTMLImageElement>(null);
+  const successTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [added, setAdded] = useState(false);
   const variants = product.variants?.length
     ? product.variants
     : [{
@@ -53,10 +57,15 @@ export function ProductCard({ product, onNotice }: Props) {
     variants.find((variant) => variant.isDefault)?.id ?? variants[0].id,
   );
   const selectedVariant = variants.find((variant) => variant.id === selectedVariantId) ?? variants[0];
+  const cartQuantity = useCartStore((state) => state.items.find((item) => item.id === selectedVariant.id)?.quantity ?? 0);
 
-  async function add() {
-    try {
-      await addCartProduct({
+  useEffect(() => () => {
+    if (successTimer.current) clearTimeout(successTimer.current);
+  }, []);
+
+  function add() {
+    const message = `${product.name} (${selectedVariant.name}) added to cart.`;
+    const persistence = addCartProduct({
         id: selectedVariant.id,
         productId: product.id,
         variantId: selectedVariant.id,
@@ -70,16 +79,23 @@ export function ProductCard({ product, onNotice }: Props) {
         imageUrl: product.imageUrl,
         altText: product.altText,
       });
-      onNotice(`${product.name} (${selectedVariant.name}) added to cart.`);
-    } catch (issue) {
-      onNotice(issue instanceof Error ? issue.message : 'Could not add that item.');
-    }
+    flyProductToCart(imageRef.current, product.imageUrl);
+    setAdded(true);
+    if (successTimer.current) clearTimeout(successTimer.current);
+    successTimer.current = setTimeout(() => setAdded(false), 1300);
+    onNotice(message);
+    void persistence.catch((issue: unknown) => {
+      if (successTimer.current) clearTimeout(successTimer.current);
+      setAdded(false);
+      onNotice(issue instanceof Error ? issue.message : 'Cart could not be saved. Please try again.');
+    });
   }
 
   return (
     <article className="product-card">
       <Link to={`/products/${product.slug}`} className="product-image-wrap">
         <img
+          ref={imageRef}
           src={product.imageUrl}
           alt={product.altText}
           width="600"
@@ -112,9 +128,9 @@ export function ProductCard({ product, onNotice }: Props) {
           {selectedVariant.stock > 0 ? `${selectedVariant.stock} available` : 'Out of stock'}
         </span>
       </div>
-      <button className="primary-btn" disabled={!selectedVariant.isActive || selectedVariant.stock < 1} onClick={add}>
-        Add to cart
+      <button className={added ? 'primary-btn added-btn' : 'primary-btn'} disabled={!selectedVariant.isActive || cartQuantity >= selectedVariant.stock} onClick={add}>
+        {added ? 'Added ✓' : 'Add to cart'}
       </button>
     </article>
   );
-}
+});
